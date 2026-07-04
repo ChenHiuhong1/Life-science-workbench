@@ -30,6 +30,7 @@ src-tauri/binaries/
 .codex/
 .agents/
 .tmp_validate/
+.tmp_actions_*
 .idea/
 .vscode/
 

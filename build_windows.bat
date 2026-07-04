@@ -63,8 +63,10 @@ if errorlevel 1 exit /b 1
 popd
 
 echo [6/6] Building Tauri Windows installers...
+pushd src-tauri
 call npx --yes @tauri-apps/cli@^2 build
 if errorlevel 1 exit /b 1
+popd
 
 echo.
 echo Build complete. Installer output:
