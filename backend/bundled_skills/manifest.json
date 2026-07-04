@@ -1,0 +1,22 @@
+{
+  "schema": "science-workbench.bundled-skills.v1",
+  "purpose": "Repository-shipped skills for open-source Science Workbench installs.",
+  "skills": [
+    "harness-core",
+    "self-awareness",
+    "agent-isolation",
+    "project-directory-governance",
+    "algorithm-method-sourcing",
+    "protein-structure",
+    "protein-design",
+    "protein-docking",
+    "protein-embedding",
+    "nature-response",
+    "critical-thinking-review",
+    "knowledge-organization",
+    "mind-map",
+    "notebook-builder",
+    "knowledge-graph-builder",
+    "module-workflow-packager"
+  ]
+}

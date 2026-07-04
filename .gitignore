@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Backend runtime data and secrets
+backend/.env
+backend/data/
+backend/build/
+backend/dist/
+backend/*.spec
+
+# App/user data
+data/
+installers/
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Tauri/Rust
+src-tauri/target/
+src-tauri/binaries/
+
+# Local editor/agent state
+.codex/
+.agents/
+.tmp_validate/
+.idea/
+.vscode/
+
+# OS noise
+Thumbs.db
+.DS_Store

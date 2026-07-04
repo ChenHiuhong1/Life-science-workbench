@@ -1,0 +1,113 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Lang } from '@/types';
+
+const dict = {
+  en: {
+    'app.title': 'Science Workbench',
+    'app.subtitle': 'Private research workspace',
+    'nav.chat': 'Chat',
+    'nav.literature': 'Literature',
+    'nav.brainstorm': 'Study Design',
+    'nav.bio': 'Bio-Analysis',
+    'nav.protocol': 'Protocol',
+    'nav.reviewer': 'Reviewer',
+    'nav.module': 'Module',
+    'nav.section.projects': 'Projects',
+    'nav.new_project': 'New Project',
+    'nav.new_session': 'New Session',
+    'nav.no_project': 'No project selected',
+    'nav.no_project_desc': 'Create or select a project to begin',
+    'nav.open_folder': 'Open in File Explorer',
+    'nav.local_path': 'Local Folder',
+    'nav.hpc': 'HPC',
+    'nav.connect_hpc': 'Connect Server',
+    'topbar.settings': 'Settings',
+    'topbar.help': 'Help',
+    'chat.placeholder': 'Ask a research question... (Shift+Enter for a new line)',
+    'chat.streaming_placeholder': 'Streaming... you can type the next instruction',
+    'chat.send': 'Send',
+    'chat.stop': 'Stop',
+    'chat.empty.title': 'Start a research conversation',
+    'chat.empty.desc': 'Type below to start. The session is created on first send.',
+    'chat.output_stopped': 'Output stopped.',
+    'settings.title': 'Settings',
+    'settings.llm': 'LLM Configuration',
+    'settings.base_url': 'API Base URL',
+    'settings.api_key': 'API Key',
+    'settings.model': 'Model Name',
+    'settings.save': 'Save',
+    'settings.saved': 'Saved',
+    'settings.sandbox': 'Code Sandbox',
+    'settings.python': 'Python Path',
+    'settings.r': 'R Path',
+    'settings.timeout': 'Execution Timeout (s)',
+    'settings.lang': 'Assistant Response Language',
+    'settings.thinking': 'Model Thinking',
+    'settings.reasoning_effort': 'Reasoning Effort',
+    'settings.app_folder': 'App Folders',
+    'lit.search.placeholder': 'Search keywords...',
+    'lit.search': 'Search',
+    'lit.sources': 'Sources',
+    'lit.empty': 'Type keywords to search PubMed / arXiv / CrossRef / Semantic Scholar',
+    'lit.cite': 'citations',
+    'lit.star': 'Star',
+    'common.cancel': 'Cancel',
+    'common.confirm': 'Confirm',
+    'common.delete': 'Delete',
+    'common.rename': 'Rename',
+    'common.empty': 'Nothing here yet',
+    'common.loading': 'Loading...',
+    'common.copy': 'Copy',
+    'common.copied': 'Copied',
+    'artifact.title': 'Artifacts',
+    'artifact.empty': 'No artifacts yet. Figures, tables, and files from code execution will appear here.',
+    'artifact.run': 'Run',
+    'common.docs': 'Knowledge',
+    'newproject.title': 'New Project',
+    'newproject.name': 'Project Name',
+    'newproject.folder': 'Local Folder',
+    'newproject.folder_ph': 'Choose a working folder for this project...',
+    'newproject.browse': 'Browse...',
+    'newproject.select_folder': 'Select Folder',
+    'newproject.empty': 'No folder selected',
+    'hpc.title': 'HPC',
+    'hpc.add': 'Add Connection',
+    'hpc.host': 'Host',
+    'hpc.port': 'Port',
+    'hpc.username': 'Username',
+    'hpc.password': 'Password',
+    'hpc.workdir': 'Working Directory',
+    'hpc.scheduler': 'Scheduler',
+    'hpc.test': 'Test Connection',
+    'hpc.connecting': 'Connecting...',
+    'hpc.connected': 'Connected',
+    'hpc.exec': 'Run Command',
+    'hpc.upload': 'Upload',
+    'hpc.download': 'Download',
+    'hpc.queue': 'Job Queue',
+    'hpc.sbatch': 'Submit Job',
+    'hpc.files': 'Remote Files',
+    'hpc.empty': 'No HPC connection yet. Add a connection to start.',
+    'hpc.terminal': 'Terminal',
+  },
+} as const;
+
+export type DictKey = keyof typeof dict.en;
+
+interface I18nState {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  t: (key: DictKey) => string;
+}
+
+export const useI18n = create<I18nState>()(
+  persist(
+    (set) => ({
+      lang: 'en',
+      setLang: (lang) => set({ lang }),
+      t: (key) => dict.en[key] ?? key,
+    }),
+    { name: 'workbench-i18n' }
+  )
+);
