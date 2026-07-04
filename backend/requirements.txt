@@ -19,7 +19,7 @@ biopython==1.84
 httpx[socks]==0.28.1
 
 # Data processing
-numpy==2.2.1
+numpy==1.26.4
 pandas==2.2.3
 scipy==1.15.0
 scikit-learn==1.6.0
