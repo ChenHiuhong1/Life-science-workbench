@@ -32,7 +32,7 @@ start_web.bat
 Install these on the Windows machine and make sure they are available in `PATH`:
 
 1. Python 3.12
-2. Node.js 20 or newer
+2. Node.js 20.19 or newer, or Node.js 22.12 or newer
 3. Rust stable / Cargo
 
 The first desktop run may need network access while Cargo downloads Rust crates.

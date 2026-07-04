@@ -18,7 +18,7 @@ if errorlevel 1 (
 where npm >nul 2>nul
 if errorlevel 1 (
   echo [ERROR] Node/npm was not found in PATH.
-  echo Install Node.js 20 or newer, then run this script again from cmd.exe.
+  echo Install Node.js 20.19 or newer, or Node.js 22.12 or newer, then run this script again from cmd.exe.
   exit /b 1
 )
 

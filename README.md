@@ -26,7 +26,7 @@ git push origin v0.1.0
 
 GitHub Actions will:
 
-1. Prepare Python 3.12, Node.js 20, and Rust on `windows-latest`.
+1. Prepare Python 3.12, Node.js 22, and Rust on `windows-latest`.
 2. Package the FastAPI backend as `science-backend.exe` with PyInstaller.
 3. Add the backend as a Tauri sidecar.
 4. Build `.exe` and `.msi` Windows installers.
@@ -43,7 +43,7 @@ Workflow file:
 Local development requires:
 
 - Python 3.12
-- Node.js 20+
+- Node.js 20.19+ or 22.12+
 - Rust stable / Cargo
 
 Run:
