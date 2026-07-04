@@ -49,8 +49,27 @@ jobs:
           Set-Content -LiteralPath $cargoPath -Value $cargo -Encoding UTF8
 
       - name: Build Windows installers
-        shell: cmd
-        run: build_windows.bat
+        shell: pwsh
+        run: |
+          cmd /c build_windows.bat *> build.log
+          $exitCode = $LASTEXITCODE
+          Get-Content -LiteralPath build.log -Tail 200
+          if ($exitCode -ne 0) {
+            $tail = (Get-Content -LiteralPath build.log -Tail 80) -join "`n"
+            $escaped = $tail `
+              -replace '%', '%25' `
+              -replace "`r", '%0D' `
+              -replace "`n", '%0A'
+            Write-Output "::error file=build_windows.bat,title=Build Windows installers failed::$escaped"
+            exit $exitCode
+          }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Collect installers
         shell: pwsh
