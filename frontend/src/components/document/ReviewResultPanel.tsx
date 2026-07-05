@@ -46,7 +46,7 @@ export function ReviewResultPanel({ content, reviewing, error, onClear }: Props)
             <span className="whitespace-pre-wrap">{error}</span>
           </div>
         ) : content ? (
-          <div className={`prose prose-sm max-w-none text-sm ${reviewing ? 'stream-cursor' : ''}`}>
+          <div className={`prose prose-sm max-w-none text-sm ${reviewing ? 'stream-active' : ''}`}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{

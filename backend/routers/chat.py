@@ -57,7 +57,7 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
         if project and project.local_path:
             project_path = project.local_path
 
-    messages = [{"role": item.role, "content": item.content} for item in req.messages]
+    messages = [{"role": item.role, "content": item.content or ""} for item in req.messages]
 
     if messages and messages[-1]["role"] == "user":
         db.add(Message(
@@ -84,9 +84,12 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
                     logger.info(f"client disconnected; stopping stream for session {req.session_id}")
                     break
                 if event.startswith("data: "):
-                    payload = json.loads(event[6:].strip())
-                    if payload.get("type") == "delta":
-                        assistant_buf["content"] += payload.get("content", "")
+                    try:
+                        payload = json.loads(event[6:].strip())
+                        if payload.get("type") == "delta":
+                            assistant_buf["content"] += payload.get("content") or ""
+                    except (ValueError, TypeError):
+                        pass
                 yield event
         except asyncio.CancelledError:
             logger.info(f"stream response cancelled for session {req.session_id}")

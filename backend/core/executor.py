@@ -198,31 +198,52 @@ def _scan_external_files(output: str, exts: set, workdir: Path) -> list:
 
 
 async def execute_tool_call(name: str, args_raw: str | dict, session_id: str = "default", project_path: str = "") -> str:
-    args = args_raw if isinstance(args_raw, dict) else json.loads(args_raw or "{}")
+    """Run a tool call and always return a string.
 
-    if name in ("run_python", "run_r"):
-        language = "python" if name == "run_python" else "r"
-        code = args.get("code", "")
-        if not code.strip():
-            return "Error: code argument is empty"
-        sid = args.get("session_id", session_id)
-        result = _run_code(code, language, sid, project_path=project_path)
-        try:
-            _persist_artifact(sid, language, code, result, args.get("title", ""), project_path=project_path)
-        except Exception as exc:
-            logger.warning(f"artifact persistence failed: {exc}")
-        return _format_run_result(result)
+    This function never raises: any failure is caught and returned as a
+    session-scoped error string. That keeps a tool error contained to the
+    session that triggered it (isolation) and prevents a single bad tool call
+    from tearing down the whole SSE stream.
+    """
+    try:
+        if isinstance(args_raw, dict):
+            args = args_raw
+        else:
+            try:
+                args = json.loads(args_raw or "{}")
+            except (ValueError, TypeError):
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
 
-    if name == "search_literature":
-        from ..services.literature.aggregator import search_all
+        if name in ("run_python", "run_r"):
+            language = "python" if name == "run_python" else "r"
+            code = args.get("code") or ""
+            if not code.strip():
+                return "Error: code argument is empty"
+            # A tool call may not override its own session; forcing the caller's
+            # session id keeps artifacts bound to the triggering session.
+            sid = session_id
+            result = _run_code(code, language, sid, project_path=project_path)
+            try:
+                _persist_artifact(sid, language, code, result, args.get("title", ""), project_path=project_path)
+            except Exception as exc:
+                logger.warning(f"artifact persistence failed: {exc}")
+            return _format_run_result(result)
 
-        query = args.get("query", "")
-        sources = args.get("sources")
-        limit = args.get("limit", 10)
-        result = await search_all(query, sources=sources, limit=limit)
-        return json.dumps(result, ensure_ascii=False)
+        if name == "search_literature":
+            from ..services.literature.aggregator import search_all
 
-    return f"Unknown tool: {name}"
+            query = args.get("query") or ""
+            sources = args.get("sources")
+            limit = args.get("limit", 10)
+            result = await search_all(query, sources=sources, limit=limit)
+            return json.dumps(result, ensure_ascii=False)
+
+        return f"Unknown tool: {name}"
+    except Exception as exc:
+        logger.exception(f"tool '{name}' failed for session {session_id}")
+        return f"[tool error] {name} failed: {exc}"
 
 
 def _format_run_result(result: dict) -> str:

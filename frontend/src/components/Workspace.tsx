@@ -1,5 +1,5 @@
-import { FlaskConical } from 'lucide-react';
 import { useStore } from '@/store';
+import { BrandGlyph } from './BrandMark';
 import { ChatView } from './chat/ChatView';
 import { HpcView } from './hpc/HpcView';
 import { LiteratureView } from './literature/LiteratureView';
@@ -36,8 +36,8 @@ function NoProject() {
   return (
     <div className="flex-1 flex items-center justify-center bg-cream-50">
       <div className="text-center">
-        <div className="w-16 h-16 rounded-full bg-cream-100 flex items-center justify-center mx-auto mb-4">
-          <FlaskConical size={24} className="text-clay-500" strokeWidth={1.5} />
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-clay-400 to-clay-600 text-white grid place-items-center mx-auto mb-4 shadow-subtle">
+          <BrandGlyph size={30} strokeWidth={2} />
         </div>
         <p className="text-sm text-ink-500">Create or select a project</p>
         <p className="text-xs text-ink-300 mt-1">Use the plus button in Projects to begin.</p>
