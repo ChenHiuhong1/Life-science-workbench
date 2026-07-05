@@ -25,7 +25,7 @@ def _resolve_artifact_root(project_path: str = "") -> Path:
     """Return the base directory that backs artifact files for a project.
 
     When ``project_path`` is given, artifacts live inside the project at
-    ``<project_path>/.sw_artifacts``; otherwise the global ``ARTIFACTS_DIR`` is
+    ``<project_path>/artifacts``; otherwise the global ``ARTIFACTS_DIR`` is
     used so legacy sessions keep working.
     """
     if project_path:

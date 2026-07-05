@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, AlertCircle, Square, FlaskConical } from 'lucide-react';
+import { Send, AlertCircle, Square, FlaskConical, FolderOpen, FolderPlus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '@/store';
@@ -153,8 +153,16 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     }
   };
 
+  const openFolder = (path: string) => {
+    if (path) api.fsOpenFolder(path).catch(() => {});
+  };
+
   return (
     <section className="flex-1 flex flex-col overflow-hidden bg-cream-50">
+      <WorkspaceBar
+        path={currentProjectPath}
+        onOpen={() => openFolder(currentProjectPath)}
+      />
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-5">
           {messages.length === 0 ? (
@@ -286,5 +294,42 @@ function MarkdownRender({ content }: { content: string }) {
     >
       {content}
     </ReactMarkdown>
+  );
+}
+
+function WorkspaceBar({ path, onOpen }: { path: string; onOpen: () => void }) {
+  const t = useI18n((s) => s.t);
+  if (path) {
+    return (
+      <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b border-cream-200 bg-cream-100/60 text-xs">
+        <FolderOpen size={12} className="shrink-0 text-clay-500" />
+        <span className="text-ink-400">{t('chat.workspace')}</span>
+        <span className="truncate flex-1 font-mono text-ink-700" title={path}>{path}</span>
+        <button
+          className="text-ink-400 hover:text-clay-600 shrink-0"
+          onClick={onOpen}
+          title={t('nav.open_folder')}
+        >
+          <ExternalLinkIcon />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b border-cream-200 bg-cream-100/60 text-xs text-ink-400">
+      <FolderPlus size={12} className="shrink-0" />
+      <span>{t('chat.no_workspace')}</span>
+    </div>
+  );
+}
+
+function ExternalLinkIcon() {
+  // tiny inline to avoid an extra lucide import name clash
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
   );
 }

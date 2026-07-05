@@ -13,24 +13,29 @@ from loguru import logger
 from ..config import ARTIFACTS_DIR, settings
 
 
-PROJECT_ARTIFACTS_SUBDIR = ".sw_artifacts"
+PROJECT_ARTIFACTS_SUBDIR = "artifacts"
 
 
-def _session_workdir(session_id: str, project_path: str = "") -> Path:
-    """Return the working directory for a session.
+def _resolve_dirs(session_id: str, project_path: str = "") -> tuple[Path, Path]:
+    """Return (cwd, artifacts_dir) for a session.
 
-    When ``project_path`` is a real folder, artifacts and generated files are
-    written inside the project at ``<project_path>/.sw_artifacts/<session>`` so
-    that the workspace follows the bound project folder. Otherwise we fall back
-    to the global ``ARTIFACTS_DIR`` to keep the legacy behaviour.
+    Design: the agent runs code with cwd == the project root, so it can freely
+    read any file in the project via plain relative paths (e.g.
+    ``pd.read_csv("data.csv")``). Generated artifacts are then gathered into a
+    per-session subfolder ``<project>/artifacts/<session>/`` to keep the project
+    root tidy and isolate sessions.
+
+    When no project folder is bound, both cwd and artifacts_dir collapse to the
+    legacy global ``ARTIFACTS_DIR/<session>`` location.
     """
     if project_path:
-        base = Path(project_path).expanduser() / PROJECT_ARTIFACTS_SUBDIR
+        cwd = Path(project_path).expanduser()
+        artifacts_dir = cwd / PROJECT_ARTIFACTS_SUBDIR / session_id
     else:
-        base = ARTIFACTS_DIR
-    workdir = base / session_id
-    workdir.mkdir(parents=True, exist_ok=True)
-    return workdir
+        cwd = ARTIFACTS_DIR / session_id
+        artifacts_dir = cwd
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    return cwd, artifacts_dir
 
 
 def _env_snapshot(language: str) -> str:
@@ -54,7 +59,7 @@ def _env_snapshot(language: str) -> str:
 
 
 def _run_code(code: str, language: str, session_id: str, timeout: int | None = None, project_path: str = "") -> dict:
-    workdir = _session_workdir(session_id, project_path)
+    cwd, artifacts_dir = _resolve_dirs(session_id, project_path)
     timeout = timeout or settings.sandbox_timeout
 
     if language == "r":
@@ -64,11 +69,22 @@ def _run_code(code: str, language: str, session_id: str, timeout: int | None = N
         ext = ".py"
         cmd = [settings.python_executable]
 
-    script_path = workdir / f"run_{uuid.uuid4().hex[:8]}{ext}"
+    # The script lives in the (hidden) artifacts dir so it never clutters the
+    # project root, but the process runs with cwd == project root.
+    script_path = artifacts_dir / f"run_{uuid.uuid4().hex[:8]}{ext}"
     script_path.write_text(code, encoding="utf-8")
     cmd.append(str(script_path))
 
-    before = {path.name for path in workdir.iterdir()}
+    # Snapshot only top-level entries of the cwd so we can diff what the run
+    # created. We deliberately do not recurse, so the agent's own nested output
+    # folders are not swept up wholesale.
+    def _top_entries(p: Path) -> set[str]:
+        try:
+            return {child.name for child in p.iterdir()}
+        except Exception:
+            return set()
+
+    before = _top_entries(cwd)
 
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg"
@@ -77,7 +93,7 @@ def _run_code(code: str, language: str, session_id: str, timeout: int | None = N
     try:
         proc = subprocess.run(
             cmd,
-            cwd=str(workdir),
+            cwd=str(cwd),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -101,19 +117,38 @@ def _run_code(code: str, language: str, session_id: str, timeout: int | None = N
             "env_snapshot": "",
         }
 
-    after = {path.name for path in workdir.iterdir()}
-    new_files = sorted(after - before - {script_path.name})
+    after = _top_entries(cwd)
+    created = after - before
     artifact_exts = {
         ".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tiff", ".tif",
         ".csv", ".tsv", ".xlsx", ".xls", ".txt", ".json",
         ".h5ad", ".h5", ".npy", ".npz", ".pkl", ".parquet",
     }
-    new_files = [name for name in new_files if Path(name).suffix.lower() in artifact_exts]
 
-    external = _scan_external_files(stdout + stderr, artifact_exts, workdir)
+    # Gather artifacts the agent wrote into the project root and move them into
+    # the per-session artifacts dir. External absolute-path files mentioned in
+    # stdout/stderr are copied in too so the artifact panel can preview them.
+    new_files: list[str] = []
+    for name in sorted(created):
+        src = cwd / name
+        if not src.is_file():
+            continue
+        if src.suffix.lower() not in artifact_exts:
+            continue
+        dst = artifacts_dir / name
+        try:
+            if dst.exists():
+                dst.unlink()
+            shutil.move(str(src), str(dst))
+            new_files.append(name)
+            logger.info(f"[executor] gathered artifact: {name} -> {dst}")
+        except Exception as exc:
+            logger.warning(f"[executor] failed to gather {name}: {exc}")
+
+    external = _scan_external_files(stdout + stderr, artifact_exts, cwd)
     for src_path in external:
         try:
-            dst = workdir / Path(src_path).name
+            dst = artifacts_dir / Path(src_path).name
             if not dst.exists():
                 shutil.copy2(src_path, dst)
             if dst.name not in new_files:
@@ -128,7 +163,7 @@ def _run_code(code: str, language: str, session_id: str, timeout: int | None = N
         "returncode": returncode,
         "files": new_files,
         "env_snapshot": _env_snapshot(language),
-        "workdir": str(workdir),
+        "workdir": str(cwd),
     }
 
 

@@ -121,7 +121,7 @@ def project_workspace(pid: str, db: Session = Depends(get_db)):
     """Return the active workspace root and artifacts subfolder for a project.
 
     When the project has a bound folder, artifacts live inside it under
-    ``.sw_artifacts``. Otherwise the global app workspaces directory is used.
+    ``artifacts``. Otherwise the global app workspaces directory is used.
     """
     from ..config import WORKSPACES_DIR
 

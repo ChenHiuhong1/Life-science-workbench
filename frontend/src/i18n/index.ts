@@ -33,6 +33,8 @@ const dict = {
     'chat.empty.title': 'Start a research conversation',
     'chat.empty.desc': 'Type below to start. The session is created on first send.',
     'chat.output_stopped': 'Output stopped.',
+    'chat.workspace': 'Working directory',
+    'chat.no_workspace': 'No project folder bound — code runs in a global workspace. Bind a folder in the sidebar to work inside a project.',
     'settings.title': 'Settings',
     'settings.llm': 'LLM Configuration',
     'settings.base_url': 'API Base URL',
