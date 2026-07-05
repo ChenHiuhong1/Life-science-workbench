@@ -30,29 +30,29 @@ if errorlevel 1 (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-  echo [1/6] Creating Python virtual environment...
+  echo [1/7] Creating Python virtual environment...
   python -m venv .venv
   if errorlevel 1 exit /b 1
 )
 
-echo [2/6] Installing backend dependencies and PyInstaller...
+echo [2/7] Installing backend dependencies and PyInstaller...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
 if errorlevel 1 exit /b 1
 ".venv\Scripts\python.exe" -m pip install -r backend\requirements.txt pydantic-settings loguru pyinstaller
 if errorlevel 1 exit /b 1
 
-echo [3/6] Packaging FastAPI backend sidecar...
+echo [3/7] Packaging FastAPI backend sidecar...
 pushd backend
 "..\.venv\Scripts\python.exe" -m PyInstaller --onefile --clean --name science-backend --paths ".." --add-data "knowledge;knowledge" --add-data "bundled_skills;bundled_skills" run_server.py
 if errorlevel 1 exit /b 1
 popd
 
-echo [4/6] Preparing Tauri sidecar binary...
+echo [4/7] Preparing Tauri sidecar binary...
 if not exist "src-tauri\binaries" mkdir "src-tauri\binaries"
 copy /Y "backend\dist\science-backend.exe" "src-tauri\binaries\science-backend-x86_64-pc-windows-msvc.exe" >nul
 if errorlevel 1 exit /b 1
 
-echo [5/6] Building frontend...
+echo [5/7] Building frontend...
 pushd frontend
 if not exist "node_modules" (
   call npm install
@@ -62,7 +62,11 @@ call npm run build
 if errorlevel 1 exit /b 1
 popd
 
-echo [6/6] Building Tauri Windows installers...
+echo [6/7] Generating installer brand bitmaps...
+".venv\Scripts\python.exe" "src-tauri\icons\gen_brand_bitmaps.py"
+if errorlevel 1 exit /b 1
+
+echo [7/7] Building Tauri Windows installers...
 pushd src-tauri
 call npx --yes @tauri-apps/cli@^2 build
 if errorlevel 1 exit /b 1
