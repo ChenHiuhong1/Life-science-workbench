@@ -188,13 +188,16 @@ async def _stream_anthropic(
                     if event_type == "content_block_delta":
                         delta = event.delta
                         if getattr(delta, "type", "") == "text_delta":
-                            text = getattr(delta, "text", "")
+                            text = getattr(delta, "text", "") or ""
                             if text:
                                 content_buf += text
                                 yield _sse({"type": "delta", "content": text})
                         elif getattr(delta, "type", "") == "input_json_delta":
                             if tool_calls:
-                                tool_calls[-1]["_raw"] += getattr(delta, "partial_json", "")
+                                # partial_json can come through as None on some
+                                # anthropic-compatible endpoints (e.g. GLM); guard
+                                # against NoneType + str concatenation.
+                                tool_calls[-1]["_raw"] += getattr(delta, "partial_json", "") or ""
                     elif event_type == "content_block_start":
                         block = event.content_block
                         if getattr(block, "type", "") == "tool_use":
