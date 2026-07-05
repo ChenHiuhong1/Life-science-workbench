@@ -8,7 +8,7 @@
 [![Release](https://img.shields.io/badge/release-v0.1.1-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
-[下载安装包 · Download](#-下载与安装--installation) · [功能特性 · Features](#-功能特性--features) · [开发指南 · Development](#-开发指南--development) · [发布流程 · Release](#-发布流程--release)
+[下载安装包 · Download](#-下载与安装--installation) · [功能特性 · Features](#-功能特性--features) · [卸载 · Uninstall](#-卸载--uninstall)
 
 </div>
 
@@ -19,7 +19,7 @@
 
 ## 中文说明
 
-Science Workbench 是一款**本地优先（local-first）**的桌面端科研 AI 工作台。它把大语言模型、文献检索、生信分析、湿实验流程、HPC 远程作业等能力整合进一个 Windows 桌面应用，数据全部留在你自己的电脑上。
+Science Workbench 是一款**本地优先（local-first）**的桌面端科研 AI 工作台。它把大语言模型、文献检索、生信分析、湿实验流程、文档写作与审查、HPC 远程作业等能力整合进一个 Windows 桌面应用，数据全部留在你自己的电脑上。
 
 最终用户无需安装 Python、Node.js、Rust，也不需要命令行——只需从 GitHub Releases 下载安装包，像普通软件一样安装后从「开始菜单」或桌面快捷方式打开即可。
 
@@ -28,7 +28,8 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 - **一键安装**：下载 `.exe` 安装包，双击安装，开箱即用。
 - **本地数据**：项目、会话、文献、产物、API Key 全部存储在本地 `%APPDATA%\ScienceWorkbench`，不上传云端。
 - **多模型适配**：兼容任何 OpenAI 接口规范的服务（GLM、DeepSeek、Kimi、OpenAI、本地 vLLM/Ollama 等）。
-- **科研全流程**：聊天助手、文献检索、研究设计、生信分析、实验流程、同行评审、模块封装、HPC 远程作业，一个应用覆盖。
+- **工作区随项目走**：每个项目绑定自己的研究文件夹，代码执行、产物、文件浏览都在该文件夹内进行，更换文件夹即时生效。
+- **文档编写 + 一键审查**：内置 Markdown 文档编辑器，写完一键调用多领域审稿能力，输出按严重度排序的可执行修改清单。
 - **内置技能库**：随程序内置 18+ 个科研 Agent 技能（蛋白质结构/设计/对接/嵌入、Nature 风格写作、批判性评审、知识图谱等），无需额外配置。
 
 ### 📥 下载与安装
@@ -46,18 +47,28 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 
 | 模块 | 说明 |
 |------|------|
-| **Chat 聊天** | 项目级会话、流式响应、可中途停止生成、代码执行与产物追踪 |
+| **Chat 聊天** | 项目级会话、流式响应、可中途停止生成、代码执行与产物追踪、会话可重命名 |
 | **Literature 文献** | 聚合检索 PubMed、arXiv、CrossRef、Semantic Scholar |
 | **Study Design 研究设计** | 基于文献的头脑风暴、假设生成、研究方案规划 |
 | **Bio-Analysis 生信分析** | Python / R 工作流、图表产物、环境快照 |
 | **Protocol 实验流程** | 湿实验流程构建、问答与数据处理 |
 | **Reviewer 评审** | 多领域评审清单与文本修订 |
+| **Document 文档** | Markdown 文档编辑器（左编辑右预览），一键调用多领域审查，输出按严重度排序的修改清单 |
 | **Module 模块** | 工作流抽取、用户引导式修订、正式模块封装 |
 | **HPC 高性能计算** | SSH 连接、远程命令、上传/下载、调度器队列 |
 
-### 📂 数据存储位置
+### 📂 工作区与数据
 
-安装版使用独立的本地数据目录：
+每个项目可绑定一个研究文件夹。绑定后：
+
+- agent 执行的 Python / R 代码在该文件夹的 `.sw_artifacts\<session>` 子目录下运行，生成的图/数据直接落到项目里；
+- 文件浏览器默认打开该项目文件夹；
+- 产物面板展示该项目的产物；
+- 在项目侧栏点齿轮图标可随时更换文件夹，工作区立即跟随切换。
+
+未绑定文件夹的项目回退到全局工作区 `%APPDATA%\ScienceWorkbench\workspaces`。
+
+数据存储位置（安装版）：
 
 ```
 %APPDATA%\ScienceWorkbench
@@ -67,74 +78,20 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 |------|------|
 | `.env` | 模型、API Key、运行时设置 |
 | `data\app.db` | 项目、会话、消息、星标文献、HPC 连接（SQLite） |
-| `data\artifacts\` | 生成的图表、表格等产物 |
+| `data\artifacts\` | 全局回退的图表/表格产物 |
 | `logs\app.log` | 后端日志 |
 | `workspaces\` | 默认项目工作区 |
 
-项目也可以指向任意外部研究目录（数据盘、项目文件夹、同步盘等）。
+### 🗑 卸载
 
-### 🛠️ 开发指南
+NSIS 安装包自带卸载程序。卸载方式任选其一：
 
-桌面端开发需要：
+- **设置 → 应用 → 已安装的应用 → ScienceWorkbench → 卸载**，或
+- 运行安装目录下的 `uninstall.exe`。
 
-- **Python 3.12**
-- **Node.js 20.19+** 或 **22.12+**
-- **Rust stable / Cargo**
+卸载会自动清除：安装目录（含程序与 sidecar）、开始菜单与桌面快捷方式、注册表卸载项。
 
-启动桌面开发环境：
-
-```bat
-cd /d D:\science_application
-start.bat
-```
-
-`start.bat` 会在后台启动后端与前端开发服务器，然后用 `cargo run` 打开 Tauri 桌面窗口（**不打开浏览器**）。
-
-仅做浏览器 UI 预览测试时：
-
-```bat
-start_web.bat
-```
-
-> 浏览器地址 `http://127.0.0.1:5173` **仅供预发布 UI 验证**，不是最终用户入口。
-
-### 📦 发布流程
-
-维护者发布新版本：
-
-```bat
-git tag v0.1.1
-git push origin v0.1.1
-```
-
-推送 `v*` 开头的 tag 后，GitHub Actions（`.github/workflows/build-desktop.yml`）会自动：
-
-1. 在 `windows-latest` 上准备 Python 3.12、Node.js 22、Rust。
-2. 用 PyInstaller 把 FastAPI 后端打包成 `science-backend.exe`，作为 Tauri sidecar。
-3. 构建前端产物。
-4. 用 `@tauri-apps/cli` 生成 `.exe`（NSIS）与 `.msi` 安装包。
-5. 创建 GitHub Release 并把安装包作为资产上传。
-
-本地手动构建安装包：
-
-```bat
-cd /d D:\science_application
-build_windows.bat
-```
-
-构建产物位于 `src-tauri\target\release\bundle\`。
-
-### 📚 内置技能
-
-开源版本不依赖任何私有的本地技能文件夹，核心 Agent 技能随程序内置在 `backend\bundled_skills\`，涵盖：harness 行为、自我认知、Agent 隔离、项目目录治理、算法/包优先溯源、蛋白质结构/设计/对接/嵌入、Nature 风格响应、批判性评审、研究设计知识组织、条件式 notebook/知识图谱生成、Module 工作流封装等。
-
-可选的用户自定义技能仍可放在：
-
-```
-%USERPROFILE%\.agents\skills
-```
-
-或设置环境变量 `SCIENCE_WORKBENCH_USER_SKILLS_DIR`。
+> 卸载程序**故意保留**用户数据 `%APPDATA%\ScienceWorkbench`（保留你的 API Key、数据库、产物），方便升级或重装。如需彻底重置，请在卸载后手动删除该文件夹。
 
 ### 🔒 隐私
 
@@ -142,15 +99,9 @@ build_windows.bat
 - 应用只在以下情况访问网络：调用你配置的 LLM API、检索公开学术数据库（PubMed 等）、连接你指定的 HPC。
 - LLM 请求直接从你的电脑发往你选择的模型服务商，本应用不中转、不存储你的密钥。
 
-### 📋 技术栈
+### 🙏 贡献者
 
-| 层 | 技术 |
-|----|------|
-| 桌面外壳 | Tauri 2（Rust） |
-| 后端 | FastAPI + Uvicorn（Python 3.12） |
-| 前端 | React 18 + TypeScript + Vite + Tailwind CSS + Zustand |
-| 数据 | SQLite（aiosqlite / SQLAlchemy） |
-| 打包 | PyInstaller（后端 sidecar）+ Tauri bundler（安装包） |
+- **[GLM (智谱 / Z.ai)](https://www.zhipuai.cn/)** — 本项目由 GLM 大模型协作开发，研究工作流、技能与文档的生成得到其辅助。Science Workbench 默认也使用 GLM 系列模型作为后端。
 
 ### License
 
@@ -160,7 +111,7 @@ MIT License © 2026 Science Workbench Contributors
 
 ## English
 
-Science Workbench is a **local-first** desktop AI workbench for research workflows. It unifies a large language model, literature search, bioinformatics analysis, wet-lab protocols, and HPC remote jobs into a single Windows desktop application — with all data kept on your own machine.
+Science Workbench is a **local-first** desktop AI workbench for research workflows. It unifies a large language model, literature search, bioinformatics analysis, wet-lab protocols, document writing with review, and HPC remote jobs into a single Windows desktop application — with all data kept on your own machine.
 
 End users never need to install Python, Node.js, or Rust, nor touch a command line. They simply download the installer from GitHub Releases, install it like any normal app, and open **Science Workbench** from the Start menu or a desktop shortcut.
 
@@ -169,7 +120,8 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 - **One-click install**: download the `.exe`, double-click, done.
 - **Local data**: projects, sessions, literature, artifacts, and API keys all live in `%APPDATA%\ScienceWorkbench` — nothing is uploaded to the cloud.
 - **Multi-provider**: works with any OpenAI-compatible API (GLM, DeepSeek, Kimi, OpenAI, local vLLM/Ollama, etc.).
-- **Full research pipeline**: chat assistant, literature search, study design, bio-analysis, protocols, peer review, module packaging, and HPC remote jobs — all in one app.
+- **Workspace follows the project**: each project binds its own research folder; code execution, artifacts, and file browsing all happen inside that folder, and switching the folder takes effect immediately.
+- **Document writing with one-click review**: a built-in Markdown editor lets you draft a manuscript/protocol/proposal, then run a multi-domain review that returns a severity-sorted, actionable revision checklist.
 - **Bundled skills**: ships with 18+ research-oriented agent skills (protein structure/design/docking/embedding, Nature-style writing, critical review, knowledge graph, etc.) — no extra setup required.
 
 ### 📥 Download & Installation
@@ -187,16 +139,26 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 
 | Module | Description |
 |--------|-------------|
-| **Chat** | Project-scoped sessions, streaming responses, stop generation mid-stream, code execution, artifact tracking |
+| **Chat** | Project-scoped sessions, streaming responses, stop generation mid-stream, code execution, artifact tracking, renameable sessions |
 | **Literature** | Aggregated search across PubMed, arXiv, CrossRef, Semantic Scholar |
 | **Study Design** | Literature-grounded brainstorming, hypothesis generation, proposal planning |
 | **Bio-Analysis** | Python / R workflows, figure artifacts, environment snapshots |
 | **Protocol** | Wet-lab protocol building, Q&A, data processing |
 | **Reviewer** | Multi-domain review checklists and text revision |
+| **Document** | Markdown editor (edit left, preview right) with one-click multi-domain review returning a severity-sorted revision checklist |
 | **Module** | Workflow extraction, user-guided revision, formal module packaging |
 | **HPC** | SSH connections, remote commands, upload/download, scheduler queues |
 
-### 📂 Data Location
+### 📂 Workspace & Data
+
+Each project can bind a research folder. Once bound:
+
+- Python / R code run by agents executes inside that folder's `.sw_artifacts\<session>` subdirectory, so figures and data land directly in the project;
+- the file browser opens at the project folder by default;
+- the artifact panel shows that project's artifacts;
+- the gear icon on a project lets you switch folders at any time, and the workspace follows instantly.
+
+Projects without a bound folder fall back to the global workspace `%APPDATA%\ScienceWorkbench\workspaces`.
 
 Installed builds use a dedicated local data directory:
 
@@ -208,74 +170,20 @@ Installed builds use a dedicated local data directory:
 |------|----------|
 | `.env` | Model, API key, runtime settings |
 | `data\app.db` | Projects, sessions, messages, starred literature, HPC connections (SQLite) |
-| `data\artifacts\` | Generated figures, tables, and other artifacts |
+| `data\artifacts\` | Global fallback for figures/tables |
 | `logs\app.log` | Backend logs |
 | `workspaces\` | Default project workspaces |
 
-Projects can also bind to any external research folder (data drives, project folders, synced folders).
+### 🗑 Uninstall
 
-### 🛠️ Development
+The NSIS installer ships its own uninstaller. Either:
 
-Desktop development requires:
+- open **Settings → Apps → Installed apps → ScienceWorkbench → Uninstall**, or
+- run `uninstall.exe` in the install directory.
 
-- **Python 3.12**
-- **Node.js 20.19+** or **22.12+**
-- **Rust stable / Cargo**
+Uninstalling removes: the install directory (app + sidecar), Start menu and desktop shortcuts, and the registry uninstall entry.
 
-Launch the desktop dev shell:
-
-```bat
-cd /d D:\science_application
-start.bat
-```
-
-`start.bat` starts the backend and frontend dev server in the background, then opens the Tauri desktop window via `cargo run` (it does **not** open a browser).
-
-For browser-only UI preview testing:
-
-```bat
-start_web.bat
-```
-
-> The browser URL `http://127.0.0.1:5173` is **only for pre-release UI validation**, not the final user entrypoint.
-
-### 📦 Release
-
-To publish a new version, maintainers push a version tag:
-
-```bat
-git tag v0.1.1
-git push origin v0.1.1
-```
-
-On any `v*` tag, the GitHub Actions workflow (`.github/workflows/build-desktop.yml`) automatically:
-
-1. Provisions Python 3.12, Node.js 22, and Rust on `windows-latest`.
-2. Packages the FastAPI backend as `science-backend.exe` with PyInstaller (Tauri sidecar).
-3. Builds the frontend.
-4. Produces `.exe` (NSIS) and `.msi` installers via `@tauri-apps/cli`.
-5. Creates a GitHub Release and uploads the installers as assets.
-
-To build installers locally:
-
-```bat
-cd /d D:\science_application
-build_windows.bat
-```
-
-Output lands in `src-tauri\target\release\bundle\`.
-
-### 📚 Bundled Skills
-
-Open-source installs do not depend on any private local skill folder. Core agent skills ship inside the app at `backend\bundled_skills\`, covering harness behavior, self-awareness, agent isolation, project-directory governance, algorithm/package-first sourcing, protein structure/design/docking/embedding, Nature-style responses, critical review, study-design knowledge organization, conditional notebook/knowledge-graph generation, and Module workflow packaging.
-
-Optional user skills may still be loaded from:
-
-```
-%USERPROFILE%\.agents\skills
-```
-
-or by setting `SCIENCE_WORKBENCH_USER_SKILLS_DIR`.
+> The uninstaller **intentionally keeps** user data at `%APPDATA%\ScienceWorkbench` (your API key, database, artifacts) so upgrades or reinstalls preserve your work. To fully reset, delete that folder manually after uninstalling.
 
 ### 🔒 Privacy
 
@@ -283,15 +191,9 @@ or by setting `SCIENCE_WORKBENCH_USER_SKILLS_DIR`.
 - The app accesses the network only to: call your configured LLM API, query public academic databases (PubMed, etc.), and connect to HPC hosts you specify.
 - LLM requests go directly from your machine to your chosen model provider. This app does not relay or store your keys.
 
-### 📋 Tech Stack
+### 🙏 Contributors
 
-| Layer | Technology |
-|-------|------------|
-| Desktop shell | Tauri 2 (Rust) |
-| Backend | FastAPI + Uvicorn (Python 3.12) |
-| Frontend | React 18 + TypeScript + Vite + Tailwind CSS + Zustand |
-| Data | SQLite (aiosqlite / SQLAlchemy) |
-| Packaging | PyInstaller (backend sidecar) + Tauri bundler (installers) |
+- **[GLM (Zhipu / Z.ai)](https://www.zhipuai.cn/)** — this project was built in collaboration with the GLM large language model, which assisted in producing research workflows, skills, and documentation. Science Workbench also defaults to the GLM model family as its backend.
 
 ### License
 

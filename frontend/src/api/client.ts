@@ -82,11 +82,8 @@ export const api = {
     jpost(`${BASE}/sessions`, { project_id: projectId, mode, title }),
   deleteSession: (id: string) => jdel(`${BASE}/sessions/${id}`),
   renameSession: (id: string, title: string) =>
-    jpost(`${BASE}/sessions`, {}).then(() => {}),
-  updateSession: (id: string, data: { title?: string; mode?: string }) =>
-    fetch(`${BASE}/sessions/${id}?${new URLSearchParams(
-      Object.entries(data).filter(([, value]) => value !== undefined) as [string, string][]
-    )}`, { method: 'PUT' }).then((response) => response.json()),
+    fetch(`${BASE}/sessions/${id}?${new URLSearchParams({ title })}`, { method: 'PUT' })
+      .then((response) => response.json()) as Promise<SessionInfo>,
   getMessages: (sid: string): Promise<Message[]> => jget(`${BASE}/sessions/${sid}/messages`),
 
   listAgents: (): Promise<AgentInfo[]> => jget(`${BASE}/chat/agents`),

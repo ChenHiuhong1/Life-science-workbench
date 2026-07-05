@@ -31,6 +31,7 @@ interface AppState {
   archiveProject: (id: string) => Promise<void>;
   createSession: (mode?: AgentKey) => Promise<string | null>;
   selectSession: (id: string) => Promise<void>;
+  renameSession: (id: string, title: string) => Promise<void>;
   setAgent: (agent: AgentKey) => Promise<void>;
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
@@ -191,6 +192,15 @@ export const useStore = create<AppState>((set, get) => ({
     } else if (!sid) {
       set({ currentSessionId: null, messages: [], artifacts: [] });
     }
+  },
+
+  renameSession: async (id, title) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    await api.renameSession(id, trimmed);
+    set({
+      sessions: get().sessions.map((s) => (s.id === id ? { ...s, title: trimmed } : s)),
+    });
   },
 
   setMessages: (messages) => {

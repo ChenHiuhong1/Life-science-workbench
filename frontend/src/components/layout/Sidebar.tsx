@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Folder, FolderOpen, MessageSquare, Trash2, ChevronDown, FolderPlus, Server, ExternalLink, Archive, Loader2, Settings2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Folder, FolderOpen, MessageSquare, Trash2, ChevronDown, FolderPlus, Server, ExternalLink, Archive, Loader2, Settings2, Pencil } from 'lucide-react';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
@@ -26,8 +26,39 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
     sessions, currentSessionId, createSession, selectSession,
     archiveProject, loadProjects, streamingSessions, creatingSession,
   } = useStore();
+  const renameSession = useStore((s) => s.renameSession);
   const [newProjOpen, setNewProjOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (renamingSessionId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingSessionId]);
+
+  const startRename = (id: string, currentTitle: string) => {
+    setRenamingSessionId(id);
+    setRenameValue(currentTitle);
+  };
+
+  const commitRename = async () => {
+    const id = renamingSessionId;
+    const value = renameValue;
+    if (id) {
+      await renameSession(id, value);
+    }
+    setRenamingSessionId(null);
+    setRenameValue('');
+  };
+
+  const cancelRename = () => {
+    setRenamingSessionId(null);
+    setRenameValue('');
+  };
   const [projCollapsed, setProjCollapsed] = useState<Record<string, boolean>>({});
 
   const openInExplorer = async (path: string) => {
@@ -175,23 +206,62 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                         className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[8px] cursor-pointer text-xs
                           ${currentSessionId === session.id ? 'bg-clay-50 text-clay-600' : 'text-ink-500 hover:bg-cream-100'}`}
                         onClick={() => selectSession(session.id)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          startRename(session.id, session.title);
+                        }}
                       >
                         <MessageSquare size={11} strokeWidth={1.75} className="shrink-0" />
-                        <span className="truncate flex-1" title={session.title}>{session.title}</span>
+                        {renamingSessionId === session.id ? (
+                          <input
+                            ref={renameInputRef}
+                            className="flex-1 min-w-0 bg-white border border-clay-400 rounded px-1 py-0.5 text-xs text-ink-900 focus:outline-none"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                              else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                            }}
+                            onBlur={commitRename}
+                            placeholder={t('common.rename')}
+                          />
+                        ) : (
+                          <span
+                            className="truncate flex-1"
+                            title={`${session.title}\n${t('common.rename_hint')}`}
+                          >
+                            {session.title}
+                          </span>
+                        )}
                         {streamingSessions[session.id] && (
                           <Loader2 size={10} className="shrink-0 animate-spin text-clay-500" />
                         )}
-                        <button
-                          className="opacity-0 group-hover:opacity-100 text-ink-300 hover:text-err"
-                          title="Delete session"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await api.deleteSession(session.id);
-                            selectProject(currentProjectId!);
-                          }}
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {renamingSessionId !== session.id && (
+                            <button
+                              className="text-ink-300 hover:text-clay-600 p-0.5 rounded hover:bg-cream-200"
+                              title={t('common.rename')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startRename(session.id, session.title);
+                              }}
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                          <button
+                            className="text-ink-300 hover:text-err p-0.5 rounded hover:bg-cream-200"
+                            title={t('common.delete')}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await api.deleteSession(session.id);
+                              selectProject(currentProjectId!);
+                            }}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

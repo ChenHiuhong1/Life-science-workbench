@@ -58,6 +58,7 @@ const dict = {
     'common.confirm': 'Confirm',
     'common.delete': 'Delete',
     'common.rename': 'Rename',
+    'common.rename_hint': 'Double-click or click the pencil to rename',
     'common.empty': 'Nothing here yet',
     'common.loading': 'Loading...',
     'common.copy': 'Copy',
