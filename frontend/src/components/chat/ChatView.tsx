@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, AlertCircle, Square, FlaskConical, FolderOpen, FolderPlus } from 'lucide-react';
+import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
 import type { AgentInfo, Message } from '@/types';
+import { BrandGlyph } from '@/components/BrandMark';
 import { CodeBlock } from './CodeBlock';
 import { AgentPresets } from './AgentPresets';
 import { ToolCallCard, type ToolEvent } from './ToolCallCard';
@@ -23,14 +24,57 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     projects.find((p) => p.id === currentProjectId)?.local_path || '';
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [error, setError] = useState('');
+  // Errors are kept per session so a background stream's failure never leaks
+  // into whatever session the user is currently viewing (module isolation).
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  // The set of assistant message ids that are actively streaming right now, so
+  // several concurrent streams in one session each keep their own caret.
+  const [streamingIds, setStreamingIds] = useState<Record<number, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeStreamsRef = useRef<Set<string>>(new Set());
   const controllersRef = useRef<Record<string, AbortController>>({});
+  // Stick-to-bottom: only auto-scroll while the user is already parked near the
+  // bottom, so scrolling up to read earlier output is never yanked back down
+  // (matches Claude / Codex desktop behavior).
+  const stickToBottomRef = useRef(true);
+
+  const errorKey = currentSessionId || '_';
+  const error = errors[errorKey] || '';
+  const setErrorFor = (key: string, message: string) =>
+    setErrors((prev) => (prev[key] === message ? prev : { ...prev, [key]: message }));
+
+  const markStreaming = (id: number, active: boolean) =>
+    setStreamingIds((prev) => {
+      if (active) return { ...prev, [id]: true };
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
+  const isNearBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
+
+  const onScroll = () => {
+    stickToBottomRef.current = isNearBottom();
+  };
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    if (!stickToBottomRef.current) return;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  // On session switch, re-pin to the bottom and jump to the latest message so a
+  // freshly opened session never inherits the previous session's scroll state.
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [currentSessionId]);
 
   const currentSessionStreaming = currentSessionId ? !!streamingSessions[currentSessionId] : streaming;
 
@@ -41,14 +85,15 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     if (!sid) {
       sid = await createSession();
       if (!sid) {
-        setError('Create or select a project first.');
+        setErrorFor(errorKey, 'Create or select a project first.');
         return;
       }
     }
 
     const userText = input.trim();
     setInput('');
-    setError('');
+    setErrorFor(sid, '');
+    stickToBottomRef.current = true;
 
     const history = [...messages.filter((m) => m.id !== -1), { role: 'user', content: userText }]
       .map((m) => ({ role: m.role, content: m.content }));
@@ -62,6 +107,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     activeStreamsRef.current.add(streamKey);
     setStreamingState(streamSid, true);
     setStreaming(true);
+    markStreaming(assistantId, true);
 
     try {
       const controller = new AbortController();
@@ -111,7 +157,11 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
               if (pt) updateToolEvent(pt.id, { status: 'done', result: String(evt.result).slice(0, 4000) });
               loadArtifacts(streamSid);
             } else if (evt.type === 'error') {
-              setError(evt.message);
+              // Bind the error to its own stream's session so it never leaks
+              // into whatever session the user is currently viewing.
+              if (!evt.session_id || evt.session_id === streamSid) {
+                setErrorFor(streamSid, evt.message);
+              }
             }
           } catch {}
         }
@@ -124,9 +174,10 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
           : t('chat.output_stopped');
         patchMessageById(streamSid, assistantId, { content: stoppedText });
       } else {
-        setError(e.message || 'Connection failed. Make sure the backend is running.');
+        setErrorFor(streamSid, e.message || 'Connection failed. Make sure the backend is running.');
       }
     } finally {
+      markStreaming(assistantId, false);
       delete controllersRef.current[streamKey];
       activeStreamsRef.current.delete(streamKey);
       setStreaming(activeStreamsRef.current.size > 0);
@@ -163,19 +214,26 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
         path={currentProjectPath}
         onOpen={() => openFolder(currentProjectPath)}
       />
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-5">
           {messages.length === 0 ? (
             <EmptyState agent={agent} t={t} />
           ) : (
             messages.map((m) => (
-              <MessageBubble key={m.id} message={m} streaming={currentSessionStreaming} />
+              <MessageBubble key={m.id} message={m} streaming={!!streamingIds[m.id]} />
             ))
           )}
           {error && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-[#FDF0F0] border border-err/20 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <span className="flex-1">{error}</span>
+              <button
+                className="shrink-0 text-err/60 hover:text-err"
+                onClick={() => setErrorFor(errorKey, '')}
+                title={t('common.cancel')}
+              >
+                <X size={13} />
+              </button>
             </div>
           )}
         </div>
@@ -236,8 +294,8 @@ function EmptyState({ agent, t }: { agent: string; t: (k: any) => string }) {
   };
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-14 h-14 rounded-full bg-clay-50 border border-clay-100 flex items-center justify-center mb-4">
-        <FlaskConical size={22} className="text-clay-500" strokeWidth={1.5} />
+      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-clay-400 to-clay-600 text-white grid place-items-center mb-4 shadow-subtle">
+        <BrandGlyph size={26} strokeWidth={2} />
       </div>
       <p className="text-base font-serif text-ink-700 mb-1">{guides[agent] || t('chat.empty.title')}</p>
       <p className="text-xs text-ink-300">{t('chat.empty.desc')}</p>
@@ -255,23 +313,43 @@ function MessageBubble({ message, streaming }: { message: Message; streaming?: b
       </div>
     );
   }
+  const hasTools = !!(message.toolEvents && message.toolEvents.length > 0);
+  const showTypingDots = streaming && !message.content && !hasTools;
   return (
     <div className="flex gap-3">
-      <div className="w-7 h-7 shrink-0 rounded-full bg-cream-100 border border-cream-300 flex items-center justify-center">
-        <FlaskConical size={14} className="text-clay-500" strokeWidth={1.5} />
+      <div
+        className={`w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-clay-400 to-clay-600 text-white grid place-items-center shadow-subtle ${
+          streaming ? 'animate-pulse-slow' : ''
+        }`}
+      >
+        <BrandGlyph size={15} strokeWidth={2.1} />
       </div>
       <div className="flex-1 min-w-0">
-        {message.toolEvents && message.toolEvents.length > 0 && (
+        {hasTools && (
           <div className="mb-2">
-            {message.toolEvents.map((ev) => (
+            {message.toolEvents!.map((ev) => (
               <ToolCallCard key={ev.id} event={ev} />
             ))}
           </div>
         )}
-        <div className={`prose prose-sm max-w-none text-sm ${streaming && !message.content ? 'stream-cursor' : ''}`}>
-          <MarkdownRender content={message.content} />
-        </div>
+        {showTypingDots ? (
+          <TypingDots />
+        ) : (
+          <div className={`prose prose-sm max-w-none text-sm ${streaming ? 'stream-active' : ''}`}>
+            <MarkdownRender content={message.content} />
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 h-5 pl-0.5" aria-label="thinking">
+      <span className="typing-dot" />
+      <span className="typing-dot" style={{ animationDelay: '0.15s' }} />
+      <span className="typing-dot" style={{ animationDelay: '0.3s' }} />
     </div>
   );
 }

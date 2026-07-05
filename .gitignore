@@ -28,6 +28,7 @@ src-tauri/target/
 src-tauri/binaries/
 
 # Local editor/agent state
+.claude/
 .codex/
 .agents/
 .tmp_validate/

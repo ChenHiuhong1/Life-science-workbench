@@ -167,7 +167,7 @@ def draw_cell(draw, cx, cy, r, membrane_color, fill_color):
 
 
 def draw_flask_glyph(draw, cx, cy, scale, color):
-    """Draw the brand Erlenmeyer flask glyph (matches the in-app logo)."""
+    """Legacy Erlenmeyer flask glyph (kept for reference; no longer the logo)."""
     s = scale
     neck_w = max(2, s // 4)
     neck_h = s
@@ -181,6 +181,44 @@ def draw_flask_glyph(draw, cx, cy, scale, color):
         (cx - neck_w // 2 - 1, body_top),
     ]
     draw.polygon(pts, outline=color, width=max(4, s // 10))
+
+
+def draw_brand_helix(draw, cx, cy, size, color, width):
+    """Draw the compact DNA double-helix brand glyph (matches the in-app logo).
+
+    One full period so the strands cross at the top, middle, and bottom, with a
+    base-pair rung across each bulge — the exact motif used by BrandGlyph in the
+    frontend and the SVG favicon.
+    """
+    h = size
+    amp = size * 0.30
+    top = cy - h / 2
+    steps = 200
+
+    def strand(phase):
+        return [
+            (cx + math.sin((i / steps) * 2 * math.pi + phase) * amp, top + (i / steps) * h)
+            for i in range(steps + 1)
+        ]
+
+    s1 = strand(0.0)
+    s2 = strand(math.pi)
+
+    rung_w = max(2, width - 2)
+    for t in (0.25, 0.75):
+        idx = int(t * steps)
+        draw.line([s1[idx], s2[idx]], fill=color, width=rung_w)
+
+    draw.line(s1, fill=color, width=width, joint="curve")
+    draw.line(s2, fill=color, width=width, joint="curve")
+
+
+def draw_brand_tile(draw, cx, cy, size, tile_color, glyph_color, radius_frac=0.28):
+    """Draw the app's clay rounded-tile logo with a white DNA helix inside."""
+    half = size // 2
+    box = [cx - half, cy - half, cx + half, cy + half]
+    draw.rounded_rectangle(box, radius=int(size * radius_frac), fill=tile_color)
+    draw_brand_helix(draw, cx, cy, int(size * 0.60), glyph_color, max(3, size // 11))
 
 
 def _rounded_rect_path(draw, box, radius, **kw):
@@ -239,7 +277,7 @@ def render_sidebar(path: Path) -> None:
         [16 * sc, 20 * sc, W * sc - panel_w - 16 * sc, 84 * sc],
         radius=12 * sc, fill=CLAY_50, outline=CLAY_300, width=2,
     )
-    draw_flask_glyph(draw, int(40 * sc), int(52 * sc), int(30 * sc), CLAY_600)
+    draw_brand_tile(draw, int(40 * sc), int(52 * sc), int(44 * sc), CLAY_500, WHITE)
     _center_text(draw, "Science", _font(22 * sc, bold=True), int(102 * sc), int(42 * sc), INK_900)
     _center_text(draw, "Workbench", _font(14 * sc), int(102 * sc), int(66 * sc), CLAY_600)
 
@@ -269,7 +307,7 @@ def render_msi_dialog(path: Path) -> None:
     )
 
     # Logo at the top of the left panel.
-    draw_flask_glyph(draw, int(panel_w // 2 * sc), int(66 * sc), int(54 * sc), CLAY_600)
+    draw_brand_tile(draw, int(panel_w // 2 * sc), int(64 * sc), int(72 * sc), CLAY_500, WHITE)
     _center_text(draw, "Science", _font(34 * sc, bold=True), int(panel_w // 2 * sc), int(118 * sc), INK_900)
     _center_text(draw, "Workbench", _font(22 * sc), int(panel_w // 2 * sc), int(150 * sc), CLAY_600)
     _center_text(draw, _version_text(), _font(13 * sc), int(panel_w // 2 * sc), int(286 * sc), INK_300)
@@ -314,25 +352,17 @@ def render_icon(path: Path) -> None:
     img = Image.new("RGBA", (W * sc, H * sc), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Rounded-square clay background (matches TopBar logo block).
+    # Rounded-square clay gradient background (matches the in-app BrandLogo).
     pad = 24 * sc
     _rounded_rect_path(
         draw,
         [pad, pad, W * sc - pad, H * sc - pad],
-        radius=96 * sc,
+        radius=112 * sc,
         fill=CLAY_500,
     )
 
-    # Stylized flask glyph centered, white.
-    draw_flask_glyph(draw, W * sc // 2, H * sc // 2, int(220 * sc), WHITE)
-
-    # Subtle DNA accent in the lower-right corner of the tile.
-    draw_dna_helix(
-        draw,
-        x0=0, y0=int((H - 90) * sc), x1=0, y1=int((H - 30) * sc),
-        color_a=WHITE, color_b=CLAY_300,
-        turns=2, radius=int(18 * sc), rungs=6,
-    )
+    # White DNA double-helix brand glyph, centered.
+    draw_brand_helix(draw, W * sc // 2, H * sc // 2, int(300 * sc), WHITE, int(30 * sc))
 
     final = img.resize((W, H), Image.LANCZOS)
     final.save(path, "PNG")
