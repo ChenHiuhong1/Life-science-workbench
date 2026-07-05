@@ -103,6 +103,17 @@ NSIS 安装包自带卸载程序。卸载方式任选其一：
 
 - **[GLM (智谱 / Z.ai)](https://www.zhipuai.cn/)** — 本项目由 GLM 大模型协作开发，研究工作流、技能与文档的生成得到其辅助。Science Workbench 默认也使用 GLM 系列模型作为后端。
 
+### 🛠️ 开发与源码
+
+普通用户直接下载安装包即可，无需关心源码。如果你想在本地运行/调试、二次开发，或自行打包，仓库里已包含全部所需文件：
+
+- **运行桌面开发版**：`start.bat`（自动装依赖、起后端 + 前端、打开 Tauri 桌面窗口）
+- **仅浏览器 UI 预览**：`start_web.bat`
+- **自行打包 Windows 安装包**：`build_windows.bat`
+- 维护者文档：`PACKAGING_WINDOWS.md`（打包细节）、`RELEASE_CHECKLIST.md`（发布检查清单）
+
+开发环境需要 Python 3.12、Node.js 20.19+/22.12+、Rust stable。详细说明见 `PACKAGING_WINDOWS.md`。GitHub Release 的 **Source code (zip)** 就是这份完整源码，解压后即可按上述脚本运行与修改。
+
 ### License
 
 MIT License © 2026 Science Workbench Contributors
@@ -194,6 +205,17 @@ Uninstalling removes: the install directory (app + sidecar), Start menu and desk
 ### 🙏 Contributors
 
 - **[GLM (Zhipu / Z.ai)](https://www.zhipuai.cn/)** — this project was built in collaboration with the GLM large language model, which assisted in producing research workflows, skills, and documentation. Science Workbench also defaults to the GLM model family as its backend.
+
+### 🛠️ Development & Source Code
+
+End users just download the installer — no source code needed. If you want to run/debug locally, extend the app, or build installers yourself, the repository already contains everything required:
+
+- **Run the desktop dev build**: `start.bat` (installs deps, starts backend + frontend, opens the Tauri desktop window)
+- **Browser-only UI preview**: `start_web.bat`
+- **Build Windows installers yourself**: `build_windows.bat`
+- Maintainer docs: `PACKAGING_WINDOWS.md` (packaging details), `RELEASE_CHECKLIST.md` (release checklist)
+
+Development requires Python 3.12, Node.js 20.19+/22.12+, and Rust stable. See `PACKAGING_WINDOWS.md` for details. The **Source code (zip)** on each GitHub Release is this complete source tree — unzip it and run the scripts above to modify and rebuild.
 
 ### License
 
