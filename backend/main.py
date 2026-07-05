@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Science Workbench API",
-    version="0.1.1",
+    version="0.1.2",
     lifespan=lifespan,
 )
 

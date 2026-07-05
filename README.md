@@ -5,7 +5,7 @@
 **面向科研流程的本地桌面 AI 工作台 · A local-first desktop AI workbench for research workflows**
 
 [![Windows](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows11)](https://github.com/ChenHiuhong1/Life-science-workbench/releases)
-[![Release](https://img.shields.io/badge/release-v0.1.1-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
+[![Release](https://img.shields.io/badge/release-v0.1.2-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
 [下载安装包 · Download](#-下载与安装--installation) · [功能特性 · Features](#-功能特性--features) · [卸载 · Uninstall](#-卸载--uninstall)
@@ -36,8 +36,8 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 
 1. 前往 [Releases 页面](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)。
 2. 在 **Assets** 中下载：
-   - **推荐**：`ScienceWorkbench_0.1.1_x64-setup.exe`（NSIS 安装包，体积更小）
-   - **备选**：`ScienceWorkbench_0.1.1_x64_en-US.msi`（MSI 安装包，适合企业部署）
+   - **推荐**：`ScienceWorkbench_0.1.2_x64-setup.exe`（NSIS 安装包，体积更小）
+   - **备选**：`ScienceWorkbench_0.1.2_x64_en-US.msi`（MSI 安装包，适合企业部署）
 3. 双击安装，按提示完成。
 4. 从「开始菜单」或桌面快捷方式打开 **Science Workbench**。
 
@@ -128,8 +128,8 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 
 1. Go to the [Releases page](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest).
 2. From **Assets**, download:
-   - **Recommended**: `ScienceWorkbench_0.1.1_x64-setup.exe` (NSIS installer, smaller).
-   - **Alternative**: `ScienceWorkbench_0.1.1_x64_en-US.msi` (MSI installer, suited for enterprise deployment).
+   - **Recommended**: `ScienceWorkbench_0.1.2_x64-setup.exe` (NSIS installer, smaller).
+   - **Alternative**: `ScienceWorkbench_0.1.2_x64_en-US.msi` (MSI installer, suited for enterprise deployment).
 3. Double-click to install and follow the wizard.
 4. Open **Science Workbench** from the Start menu or desktop shortcut.
 
