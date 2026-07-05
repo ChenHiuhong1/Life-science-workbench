@@ -5,7 +5,7 @@
 **面向科研流程的本地桌面 AI 工作台 · A local-first desktop AI workbench for research workflows**
 
 [![Windows](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows11)](https://github.com/ChenHiuhong1/Life-science-workbench/releases)
-[![Release](https://img.shields.io/badge/release-v0.1.3-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
+[![Release](https://img.shields.io/badge/release-v0.1.4-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
 [下载安装包 · Download](#-下载与安装--installation) · [功能特性 · Features](#-功能特性--features) · [卸载 · Uninstall](#-卸载--uninstall)
@@ -36,8 +36,8 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 
 1. 前往 [Releases 页面](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)。
 2. 在 **Assets** 中下载：
-   - **推荐**：`ScienceWorkbench_0.1.3_x64-setup.exe`（NSIS 安装包，体积更小）
-   - **备选**：`ScienceWorkbench_0.1.3_x64_en-US.msi`（MSI 安装包，适合企业部署）
+   - **推荐**：`ScienceWorkbench_0.1.4_x64-setup.exe`（NSIS 安装包，体积更小）
+   - **备选**：`ScienceWorkbench_0.1.4_x64_en-US.msi`（MSI 安装包，适合企业部署）
 3. 双击安装，按提示完成。
 4. 从「开始菜单」或桌面快捷方式打开 **Science Workbench**。
 
@@ -99,10 +99,6 @@ NSIS 安装包自带卸载程序。卸载方式任选其一：
 - 应用只在以下情况访问网络：调用你配置的 LLM API、检索公开学术数据库（PubMed 等）、连接你指定的 HPC。
 - LLM 请求直接从你的电脑发往你选择的模型服务商，本应用不中转、不存储你的密钥。
 
-### 🙏 贡献者
-
-- **[GLM (智谱 / Z.ai)](https://www.zhipuai.cn/)** — 本项目由 GLM 大模型协作开发，研究工作流、技能与文档的生成得到其辅助。Science Workbench 默认也使用 GLM 系列模型作为后端。
-
 ### 🛠️ 开发与源码
 
 普通用户直接下载安装包即可，无需关心源码。如果你想在本地运行/调试、二次开发，或自行打包，仓库里已包含全部所需文件：
@@ -139,8 +135,8 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 
 1. Go to the [Releases page](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest).
 2. From **Assets**, download:
-   - **Recommended**: `ScienceWorkbench_0.1.3_x64-setup.exe` (NSIS installer, smaller).
-   - **Alternative**: `ScienceWorkbench_0.1.3_x64_en-US.msi` (MSI installer, suited for enterprise deployment).
+   - **Recommended**: `ScienceWorkbench_0.1.4_x64-setup.exe` (NSIS installer, smaller).
+   - **Alternative**: `ScienceWorkbench_0.1.4_x64_en-US.msi` (MSI installer, suited for enterprise deployment).
 3. Double-click to install and follow the wizard.
 4. Open **Science Workbench** from the Start menu or desktop shortcut.
 
@@ -201,10 +197,6 @@ Uninstalling removes: the install directory (app + sidecar), Start menu and desk
 - All data (projects, sessions, literature, artifacts, API keys) is stored locally only; nothing is uploaded to any Science Workbench server.
 - The app accesses the network only to: call your configured LLM API, query public academic databases (PubMed, etc.), and connect to HPC hosts you specify.
 - LLM requests go directly from your machine to your chosen model provider. This app does not relay or store your keys.
-
-### 🙏 Contributors
-
-- **[GLM (Zhipu / Z.ai)](https://www.zhipuai.cn/)** — this project was built in collaboration with the GLM large language model, which assisted in producing research workflows, skills, and documentation. Science Workbench also defaults to the GLM model family as its backend.
 
 ### 🛠️ Development & Source Code
 
