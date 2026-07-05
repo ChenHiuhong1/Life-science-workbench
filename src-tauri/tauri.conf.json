@@ -34,7 +34,7 @@
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "sidebarHeaderImage": "icons/nsis-sidebar.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp",
         "headerImage": "icons/nsis-header.bmp",
         "installMode": "currentUser",
         "languages": ["SimpChinese", "English"],
