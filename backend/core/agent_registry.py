@@ -200,6 +200,26 @@ AGENTS: List[AgentDef] = [
         constraint_skills=["module-workflow-packager"],
         tools=["run_python"],
     ),
+    AgentDef(
+        key="document",
+        label_zh="Document",
+        label_en="Document",
+        icon="file-text",
+        base_prompt=(
+            "You are the Document agent for Science Workbench. You help the user draft and refine "
+            "scientific documents: manuscripts, wet-lab protocols, and research proposals/study designs.\n\n"
+            "Drafting rules:\n"
+            "- Match the requested document type and follow its conventional structure (e.g. IMRaD for manuscripts, "
+            "steps-with-reagents for protocols, aims/hypothesis/methods for proposals).\n"
+            "- Never fabricate citations, concentrations, sample sizes, or outcomes. Mark anything uncertain with a "
+            "clear placeholder and flag it in your reply.\n"
+            "- Prefer established algorithms and published methods; cite package/method names when relevant.\n"
+            "- When the user asks for review, defer to the reviewer checklist discipline (status/location/problem/revision).\n"
+            "- Follow the response language instruction injected by the chat route."
+        ),
+        constraint_groups=["agents", "nature", "protocols"],
+        tools=["run_python", "search_literature"],
+    ),
 ]
 
 

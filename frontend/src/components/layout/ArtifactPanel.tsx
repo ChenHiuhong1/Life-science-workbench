@@ -24,6 +24,7 @@ interface FileItem {
   category: 'image' | 'data' | 'doc';
   artId: string;
   artTitle: string;
+  projectPath?: string;
   created_at?: string;
 }
 
@@ -42,6 +43,7 @@ export function ArtifactPanel() {
         category: fileCategory(f),
         artId: a.id,
         artTitle: a.title,
+        projectPath: a.project_path || '',
         created_at: a.created_at,
       }))
     )
@@ -121,12 +123,12 @@ export function ArtifactPanel() {
 }
 
 function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => void }) {
-  const url = api.artifactFileUrl(item.path);
+  const url = api.artifactFileUrl(item.path, item.projectPath);
   const isImage = item.category === 'image';
 
   const showInFolder = async () => {
     try {
-      await api.artifactOpenFolder(item.path);
+      await api.artifactOpenFolder(item.path, item.projectPath);
     } catch {}
   };
 

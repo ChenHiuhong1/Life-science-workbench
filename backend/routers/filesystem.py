@@ -59,6 +59,28 @@ def get_home():
     }
 
 
+@router.get("/project/{project_id}")
+def get_project_root(project_id: str):
+    """Return the folder the file browser should open for a project.
+
+    Falls back to the global workspaces directory when the project has no
+    bound folder yet so the UI always has somewhere to start.
+    """
+    from ..db.database import SessionLocal
+    from ..db.models import Project
+
+    db = SessionLocal()
+    try:
+        project = db.query(Project).get(project_id)
+        root = (project.local_path or "").strip() if project else ""
+    finally:
+        db.close()
+
+    if root and Path(root).exists():
+        return {"project_id": project_id, "root": root, "bound": True}
+    return {"project_id": project_id, "root": str(WORKSPACES_DIR), "bound": False}
+
+
 @router.post("/validate")
 def validate(inp: Optional[PathIn] = None, path: str = ""):
     path = (inp.path if inp else path) or ""

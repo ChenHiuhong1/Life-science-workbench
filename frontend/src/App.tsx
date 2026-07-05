@@ -23,6 +23,7 @@ export default function App() {
         { key: 'protocol', label_zh: 'Protocol', label_en: 'Protocol', icon: 'flask' },
         { key: 'reviewer', label_zh: 'Reviewer', label_en: 'Reviewer', icon: 'shield-check' },
         { key: 'module', label_zh: 'Module', label_en: 'Module', icon: 'boxes' },
+        { key: 'document', label_zh: 'Document', label_en: 'Document', icon: 'file-text' },
       ]);
     });
     loadProjects();

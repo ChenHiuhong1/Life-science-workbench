@@ -27,6 +27,7 @@ interface AppState {
   loadProjects: () => Promise<void>;
   selectProject: (id: string) => Promise<void>;
   createProject: (name: string, localPath?: string) => Promise<void>;
+  updateProject: (id: string, data: { name?: string; description?: string; local_path?: string }) => Promise<void>;
   archiveProject: (id: string) => Promise<void>;
   createSession: (mode?: AgentKey) => Promise<string | null>;
   selectSession: (id: string) => Promise<void>;
@@ -93,6 +94,22 @@ export const useStore = create<AppState>((set, get) => ({
     const project = await api.createProject(name, '', localPath);
     set({ projects: [project, ...get().projects] });
     await get().selectProject(project.id);
+  },
+
+  updateProject: async (id, data) => {
+    const current = get().projects.find((p) => p.id === id);
+    const merged = {
+      name: data.name ?? current?.name ?? '',
+      description: data.description ?? current?.description ?? '',
+      local_path: data.local_path ?? current?.local_path ?? '',
+    };
+    const updated = await api.updateProject(id, merged);
+    set({ projects: get().projects.map((p) => (p.id === id ? updated : p)) });
+    if (get().currentProjectId === id) {
+      // Refresh session cache so the bound folder change is visible immediately.
+      set({ currentProjectId: null });
+      await get().selectProject(id);
+    }
   },
 
   archiveProject: async (id) => {

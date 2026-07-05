@@ -1,5 +1,5 @@
 import {
-  MessageSquare, BookOpen, Lightbulb, Dna, FlaskConical, ShieldCheck, Boxes, type LucideIcon,
+  MessageSquare, BookOpen, Lightbulb, Dna, FlaskConical, ShieldCheck, Boxes, FileText, Server, type LucideIcon,
 } from 'lucide-react';
 
 export const AGENT_ICONS: Record<string, LucideIcon> = {
@@ -10,4 +10,6 @@ export const AGENT_ICONS: Record<string, LucideIcon> = {
   flask: FlaskConical,
   'shield-check': ShieldCheck,
   boxes: Boxes,
+  'file-text': FileText,
+  server: Server,
 };

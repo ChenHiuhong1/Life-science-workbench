@@ -19,12 +19,13 @@ async def stream_chat(
     system_prompt: str = "",
     model: str | None = None,
     session_id: str = "default",
+    project_path: str = "",
 ) -> AsyncIterator[str]:
     if _is_anthropic():
-        async for event in _stream_anthropic(messages, tools, system_prompt, model, session_id):
+        async for event in _stream_anthropic(messages, tools, system_prompt, model, session_id, project_path):
             yield event
     else:
-        async for event in _stream_openai(messages, tools, system_prompt, model, session_id):
+        async for event in _stream_openai(messages, tools, system_prompt, model, session_id, project_path):
             yield event
 
 
@@ -54,6 +55,7 @@ async def _stream_openai(
     system_prompt: str,
     model: str | None,
     session_id: str = "default",
+    project_path: str = "",
 ) -> AsyncIterator[str]:
     from openai import AsyncOpenAI
 
@@ -121,7 +123,7 @@ async def _stream_openai(
             full_messages.append({"role": "assistant", "content": content_buf, "tool_calls": assistant_tool_calls})
             for item in tool_calls_buf.values():
                 yield _sse({"type": "tool_call", "name": item["name"], "args": _safe_json(item["args"])})
-                result = await execute_tool_call(item["name"], item["args"], session_id=session_id)
+                result = await execute_tool_call(item["name"], item["args"], session_id=session_id, project_path=project_path)
                 yield _sse({"type": "tool_result", "name": item["name"], "result": result[:8000]})
                 full_messages.append({"role": "tool", "tool_call_id": item["id"], "content": result})
             continue
@@ -148,6 +150,7 @@ async def _stream_anthropic(
     system_prompt: str,
     model: str | None,
     session_id: str = "default",
+    project_path: str = "",
 ) -> AsyncIterator[str]:
     import anthropic
 
@@ -225,7 +228,7 @@ async def _stream_anthropic(
                 tool_results = []
                 for tool_call in parsed_tool_calls:
                     yield _sse({"type": "tool_call", "name": tool_call["name"], "args": tool_call["input"]})
-                    result = await execute_tool_call(tool_call["name"], tool_call["input"], session_id=session_id)
+                    result = await execute_tool_call(tool_call["name"], tool_call["input"], session_id=session_id, project_path=project_path)
                     yield _sse({"type": "tool_result", "name": tool_call["name"], "result": result[:8000]})
                     tool_results.append({
                         "type": "tool_result",

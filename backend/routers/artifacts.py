@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..config import ARTIFACTS_DIR
+from ..core.executor import PROJECT_ARTIFACTS_SUBDIR
 from ..db.database import SessionLocal
 from ..db.models import Artifact
 
@@ -17,6 +18,19 @@ router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
 
 class ArtifactPathIn(BaseModel):
     path: str
+    project_path: str = ""
+
+
+def _resolve_artifact_root(project_path: str = "") -> Path:
+    """Return the base directory that backs artifact files for a project.
+
+    When ``project_path`` is given, artifacts live inside the project at
+    ``<project_path>/.sw_artifacts``; otherwise the global ``ARTIFACTS_DIR`` is
+    used so legacy sessions keep working.
+    """
+    if project_path:
+        return Path(project_path).expanduser() / PROJECT_ARTIFACTS_SUBDIR
+    return ARTIFACTS_DIR
 
 
 @router.get("/session/{sid}")
@@ -38,6 +52,7 @@ def list_session_artifacts(sid: str):
                 "code": item.code,
                 "output": item.output,
                 "files": item.files,
+                "project_path": item.project_path or "",
                 "env_snapshot": (item.env_snapshot or "")[:1500],
                 "created_at": item.created_at.isoformat() if item.created_at else None,
             }
@@ -47,9 +62,10 @@ def list_session_artifacts(sid: str):
         db.close()
 
 
-def _safe_artifact_path(path: str) -> Path:
-    full = (ARTIFACTS_DIR / path).resolve()
-    root = ARTIFACTS_DIR.resolve()
+def _safe_artifact_path(path: str, project_path: str = "") -> Path:
+    root_dir = _resolve_artifact_root(project_path)
+    full = (root_dir / path).resolve()
+    root = root_dir.resolve()
     try:
         full.relative_to(root)
     except ValueError:
@@ -58,8 +74,8 @@ def _safe_artifact_path(path: str) -> Path:
 
 
 @router.get("/file/{path:path}")
-def download_file(path: str):
-    full = _safe_artifact_path(path)
+def download_file(path: str, project_path: str = ""):
+    full = _safe_artifact_path(path, project_path)
     if not full.exists() or not full.is_file():
         raise HTTPException(404, "Artifact file does not exist")
     return FileResponse(str(full))
@@ -67,7 +83,7 @@ def download_file(path: str):
 
 @router.post("/open-folder")
 def open_artifact_folder(inp: ArtifactPathIn):
-    full = _safe_artifact_path(inp.path)
+    full = _safe_artifact_path(inp.path, inp.project_path)
     folder = full.parent if full.suffix else full
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
@@ -99,6 +115,7 @@ def get_artifact(aid: str):
             "code": item.code,
             "output": item.output,
             "files": item.files,
+            "project_path": item.project_path or "",
             "env_snapshot": item.env_snapshot,
         }
     finally:

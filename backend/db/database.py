@@ -25,6 +25,7 @@ def init_db():
     migrations = {
         "projects": [("local_path", "TEXT DEFAULT ''"), ("archived", "BOOLEAN DEFAULT 0")],
         "hpc_connections": [],
+        "artifacts": [("project_path", "TEXT DEFAULT ''")],
     }
     with engine.connect() as conn:
         for table, cols in migrations.items():

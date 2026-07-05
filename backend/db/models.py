@@ -84,6 +84,7 @@ class Artifact(Base):
     output = Column(Text, default="")
     files = Column(JSON, default=list)
     env_snapshot = Column(Text, default="")
+    project_path = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("Session", back_populates="artifacts")

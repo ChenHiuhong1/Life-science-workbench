@@ -1,6 +1,6 @@
 export type AgentKey =
   | 'chat' | 'literature' | 'brainstorm'
-  | 'bio' | 'protocol' | 'reviewer' | 'module' | 'hpc';
+  | 'bio' | 'protocol' | 'reviewer' | 'module' | 'document' | 'hpc';
 
 export interface AgentInfo {
   key: AgentKey;
@@ -44,6 +44,7 @@ export interface Artifact {
   code: string;
   output: string;
   files: string[];
+  project_path?: string;
   env_snapshot?: string;
   created_at?: string;
 }

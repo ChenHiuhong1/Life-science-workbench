@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Plus, Folder, FolderOpen, MessageSquare, Trash2, ChevronDown, FolderPlus, Server, ExternalLink, Archive, Loader2 } from 'lucide-react';
+import { Plus, Folder, FolderOpen, MessageSquare, Trash2, ChevronDown, FolderPlus, Server, ExternalLink, Archive, Loader2, Settings2 } from 'lucide-react';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
 import { AGENT_ICONS } from '@/components/icons';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
-import type { AgentInfo, AgentKey } from '@/types';
+import type { AgentInfo, AgentKey, Project } from '@/types';
 
 const AGENT_NAV: { key: AgentKey; tKey: any }[] = [
   { key: 'chat', tKey: 'nav.chat' },
@@ -15,6 +15,7 @@ const AGENT_NAV: { key: AgentKey; tKey: any }[] = [
   { key: 'protocol', tKey: 'nav.protocol' },
   { key: 'reviewer', tKey: 'nav.reviewer' },
   { key: 'module', tKey: 'nav.module' },
+  { key: 'document', tKey: 'nav.document' },
 ];
 
 export function Sidebar({ agents }: { agents: AgentInfo[] }) {
@@ -26,6 +27,7 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
     archiveProject, loadProjects, streamingSessions, creatingSession,
   } = useStore();
   const [newProjOpen, setNewProjOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projCollapsed, setProjCollapsed] = useState<Record<string, boolean>>({});
 
   const openInExplorer = async (path: string) => {
@@ -103,6 +105,13 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                   <Folder size={13} strokeWidth={1.75} className="shrink-0 text-clay-400" />
                   <span className="truncate flex-1" title={project.name}>{project.name}</span>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      className="text-ink-300 hover:text-clay-600 p-1 rounded hover:bg-cream-200"
+                      title={t('nav.edit_project')}
+                      onClick={(e) => { e.stopPropagation(); setEditingProject(project); }}
+                    >
+                      <Settings2 size={11} />
+                    </button>
                     <button
                       className="text-ink-300 hover:text-warn p-1 rounded hover:bg-cream-200"
                       title="Archive"
@@ -204,6 +213,12 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
       </div>
 
       {newProjOpen && <NewProjectModal onClose={() => setNewProjOpen(false)} />}
+      {editingProject && (
+        <NewProjectModal
+          editProject={editingProject}
+          onClose={() => setEditingProject(null)}
+        />
+      )}
     </aside>
   );
 }

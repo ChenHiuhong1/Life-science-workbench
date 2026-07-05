@@ -13,8 +13,22 @@ from loguru import logger
 from ..config import ARTIFACTS_DIR, settings
 
 
-def _session_workdir(session_id: str) -> Path:
-    workdir = ARTIFACTS_DIR / session_id
+PROJECT_ARTIFACTS_SUBDIR = ".sw_artifacts"
+
+
+def _session_workdir(session_id: str, project_path: str = "") -> Path:
+    """Return the working directory for a session.
+
+    When ``project_path`` is a real folder, artifacts and generated files are
+    written inside the project at ``<project_path>/.sw_artifacts/<session>`` so
+    that the workspace follows the bound project folder. Otherwise we fall back
+    to the global ``ARTIFACTS_DIR`` to keep the legacy behaviour.
+    """
+    if project_path:
+        base = Path(project_path).expanduser() / PROJECT_ARTIFACTS_SUBDIR
+    else:
+        base = ARTIFACTS_DIR
+    workdir = base / session_id
     workdir.mkdir(parents=True, exist_ok=True)
     return workdir
 
@@ -39,8 +53,8 @@ def _env_snapshot(language: str) -> str:
         return f"(env snapshot failed: {exc})"
 
 
-def _run_code(code: str, language: str, session_id: str, timeout: int | None = None) -> dict:
-    workdir = _session_workdir(session_id)
+def _run_code(code: str, language: str, session_id: str, timeout: int | None = None, project_path: str = "") -> dict:
+    workdir = _session_workdir(session_id, project_path)
     timeout = timeout or settings.sandbox_timeout
 
     if language == "r":
@@ -148,7 +162,7 @@ def _scan_external_files(output: str, exts: set, workdir: Path) -> list:
     return found
 
 
-async def execute_tool_call(name: str, args_raw: str | dict, session_id: str = "default") -> str:
+async def execute_tool_call(name: str, args_raw: str | dict, session_id: str = "default", project_path: str = "") -> str:
     args = args_raw if isinstance(args_raw, dict) else json.loads(args_raw or "{}")
 
     if name in ("run_python", "run_r"):
@@ -157,9 +171,9 @@ async def execute_tool_call(name: str, args_raw: str | dict, session_id: str = "
         if not code.strip():
             return "Error: code argument is empty"
         sid = args.get("session_id", session_id)
-        result = _run_code(code, language, sid)
+        result = _run_code(code, language, sid, project_path=project_path)
         try:
-            _persist_artifact(sid, language, code, result, args.get("title", ""))
+            _persist_artifact(sid, language, code, result, args.get("title", ""), project_path=project_path)
         except Exception as exc:
             logger.warning(f"artifact persistence failed: {exc}")
         return _format_run_result(result)
@@ -187,7 +201,7 @@ def _format_run_result(result: dict) -> str:
     )
 
 
-def _persist_artifact(session_id: str, language: str, code: str, result: dict, title: str):
+def _persist_artifact(session_id: str, language: str, code: str, result: dict, title: str, project_path: str = ""):
     from ..db.database import SessionLocal
     from ..db.models import Artifact
 
@@ -203,6 +217,7 @@ def _persist_artifact(session_id: str, language: str, code: str, result: dict, t
             output=result["stdout"] + ("\n" + result["stderr"] if result["stderr"] else ""),
             files=[f"{session_id}/{name}" for name in result["files"]],
             env_snapshot=result.get("env_snapshot", ""),
+            project_path=project_path or "",
         )
         db.add(artifact)
         db.commit()

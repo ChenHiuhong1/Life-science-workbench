@@ -20,6 +20,16 @@ async function jpost(url: string, body: any) {
   return response.json();
 }
 
+async function jput(url: string, body: any) {
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  return response.json();
+}
+
 async function jdel(url: string) {
   const response = await fetch(url, { method: 'DELETE' });
   if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
@@ -31,6 +41,10 @@ export const api = {
     jget(`${BASE}/projects${archived !== undefined ? `?archived=${archived}` : ''}`),
   createProject: (name: string, description = '', localPath = '') =>
     jpost(`${BASE}/projects`, { name, description, local_path: localPath }),
+  updateProject: (id: string, data: { name: string; description?: string; local_path?: string }) =>
+    jput(`${BASE}/projects/${id}`, data),
+  projectWorkspace: (id: string) =>
+    jget(`${BASE}/projects/${id}/workspace`) as Promise<{ project_id: string; root: string; artifacts_dir: string; bound: boolean }>,
   deleteProject: (id: string) => jdel(`${BASE}/projects/${id}`),
   archiveProject: (id: string) => jpost(`${BASE}/projects/${id}/archive`, {}),
 
@@ -39,6 +53,8 @@ export const api = {
   fsBrowseFiles: (path = '') =>
     jget(`${BASE}/fs/browse?path=${encodeURIComponent(path)}&include_files=true`),
   fsHome: () => jget(`${BASE}/fs/home`),
+  fsProjectRoot: (projectId: string) =>
+    jget(`${BASE}/fs/project/${projectId}`) as Promise<{ project_id: string; root: string; bound: boolean }>,
   fsValidate: (path: string) => jpost(`${BASE}/fs/validate`, { path }).catch(() => ({ valid: false })),
   fsOpenFolder: (path: string) => jpost(`${BASE}/fs/open-folder`, { path }),
 
@@ -80,8 +96,22 @@ export const api = {
     agent: string;
     messages: { role: string; content: string }[];
     language: string;
+    project_path?: string;
   }, signal?: AbortSignal) =>
     fetch(`${BASE}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal,
+    }),
+
+  reviewDocumentStream: (req: {
+    document_text: string;
+    document_type: string;
+    language: string;
+    project_path?: string;
+  }, signal?: AbortSignal) =>
+    fetch(`${BASE}/chat/review-document`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
@@ -106,9 +136,11 @@ export const api = {
 
   listArtifacts: (sid: string): Promise<Artifact[]> =>
     jget(`${BASE}/artifacts/session/${sid}`),
-  artifactFileUrl: (path: string) =>
-    `${BASE}/artifacts/file/${path.split('/').map(encodeURIComponent).join('/')}`,
-  artifactOpenFolder: (path: string) => jpost(`${BASE}/artifacts/open-folder`, { path }),
+  artifactFileUrl: (path: string, projectPath = '') =>
+    `${BASE}/artifacts/file/${path.split('/').map(encodeURIComponent).join('/')}` +
+    (projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : ''),
+  artifactOpenFolder: (path: string, projectPath = '') =>
+    jpost(`${BASE}/artifacts/open-folder`, { path, project_path: projectPath }),
 
   saveSettings: (settings: {
     llm_base_url: string; llm_api_key?: string; llm_model: string;

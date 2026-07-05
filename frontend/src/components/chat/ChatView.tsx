@@ -17,6 +17,10 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     agent, currentSessionId, messages, addMessage, appendToMessage, loadArtifacts,
     createSession, patchMessageById, setStreamingState, streamingSessions,
   } = useStore();
+  const projects = useStore((s) => s.projects);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+  const currentProjectPath =
+    projects.find((p) => p.id === currentProjectId)?.local_path || '';
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
@@ -63,7 +67,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
       const controller = new AbortController();
       controllersRef.current[streamKey] = controller;
       const resp = await api.chatStream(
-        { session_id: streamSid, agent, messages: history, language: lang },
+        { session_id: streamSid, agent, messages: history, language: lang, project_path: currentProjectPath },
         controller.signal
       );
       if (!resp.ok) throw new Error(await resp.text());
