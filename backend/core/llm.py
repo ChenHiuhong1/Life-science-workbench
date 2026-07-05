@@ -21,6 +21,21 @@ from loguru import logger
 
 from ..config import reload_settings, settings
 
+MAX_TOOL_ROUNDS = 6
+CHAT_MAX_TOKENS = 4096
+FINAL_SUMMARY_MAX_TOKENS = 2048
+MODEL_TOOL_RESULT_CHAR_LIMIT = 6000
+COMPACT_RESPONSE_INSTRUCTION = (
+    "Token budget: concise. Prefer the shortest complete answer, do not echo full tool logs, "
+    "and summarize tool evidence by outcome, key numbers, failures, and artifact paths."
+)
+FINAL_TOOL_SUMMARY_PROMPT = (
+    "Tool execution budget reached. Do not call any more tools. Summarize what was completed, "
+    "what failed or remains unchecked, and the final user-visible outputs. List artifact paths by "
+    "Figure/Table/Script/Data when present, include any artifact review or visual sanity notes from "
+    "tool results, and give the next concrete step if work is incomplete."
+)
+
 
 def _as_text(value: Any) -> str:
     """Coerce any streaming fragment to a safe string.
@@ -86,10 +101,25 @@ def _with_reasoning_instruction(system_prompt: str) -> str:
             "before answering. Do not expose long hidden reasoning; summarize the useful rationale."
         ),
     }
-    extra = instructions.get(effort)
-    if not extra:
-        return base
-    return (base + "\n\n" + extra).strip()
+    extras = [COMPACT_RESPONSE_INSTRUCTION]
+    if instructions.get(effort):
+        extras.append(instructions[effort])
+    return (base + "\n\n" + "\n".join(extras)).strip()
+
+
+def _compact_tool_result_for_model(result: str) -> str:
+    text = _as_text(result)
+    if len(text) <= MODEL_TOOL_RESULT_CHAR_LIMIT:
+        return text
+    head = text[:3600]
+    tail = text[-1800:]
+    omitted = len(text) - len(head) - len(tail)
+    return (
+        f"{head}\n\n"
+        f"[tool output compacted for model context: {omitted} characters omitted; "
+        "the full result was streamed to the UI tool card and persisted with artifacts when applicable.]\n\n"
+        f"{tail}"
+    )
 
 
 async def _stream_openai(
@@ -116,7 +146,8 @@ async def _stream_openai(
 
     model = model or settings.llm_model
 
-    for _ in range(8):
+    force_final_summary = False
+    for round_idx in range(MAX_TOOL_ROUNDS):
         content_buf = ""
         tool_calls_buf: Dict[int, dict] = {}
 
@@ -129,6 +160,7 @@ async def _stream_openai(
                 messages=full_messages,
                 tools=tools or None,
                 tool_choice="auto" if tools else None,
+                max_tokens=CHAT_MAX_TOKENS,
                 stream=True,
             )
 
@@ -172,12 +204,48 @@ async def _stream_openai(
                 yield _sse({"type": "tool_call", "name": item["name"], "args": _safe_json(item["args"])})
                 result = await execute_tool_call(item["name"], item["args"], session_id=session_id, project_path=project_path)
                 result = _as_text(result)
-                yield _sse({"type": "tool_result", "name": item["name"], "result": result[:8000]})
-                full_messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
+                yield _sse({"type": "tool_result", "name": item["name"], "result": result})
+                full_messages.append({
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": _compact_tool_result_for_model(result),
+                })
+            if round_idx == MAX_TOOL_ROUNDS - 1:
+                force_final_summary = True
+                break
             continue
         break
 
+    if force_final_summary:
+        async for event in _stream_openai_text_only(client, model, full_messages):
+            yield event
+
     yield _sse({"type": "done"})
+
+
+async def _stream_openai_text_only(client: Any, model: str, messages: List[Dict[str, Any]]) -> AsyncIterator[str]:
+    """Force a final text response after tool rounds are exhausted."""
+    try:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=messages + [{"role": "user", "content": FINAL_TOOL_SUMMARY_PROMPT}],
+            max_tokens=FINAL_SUMMARY_MAX_TOKENS,
+            stream=True,
+        )
+        emitted = False
+        async for chunk in stream:
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = chunk.choices[0].delta
+            text = _as_text(getattr(delta, "content", None))
+            if text:
+                emitted = True
+                yield _sse({"type": "delta", "content": text})
+        if not emitted:
+            yield _sse({"type": "delta", "content": "\n\nTool execution reached the limit before the model produced a final summary. Review the tool cards and artifact panel for the latest outputs."})
+    except Exception as exc:
+        logger.exception("OpenAI-compatible final summary failed")
+        yield _sse({"type": "delta", "content": f"\n\nTool execution reached the limit, and the forced final summary failed: {exc}"})
 
 
 def _sanitize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -229,12 +297,13 @@ async def _stream_anthropic(
     api_messages = [message for message in _sanitize_messages(messages) if message["role"] != "system"]
     anthropic_tools = _convert_tools_to_anthropic(tools) if tools else None
 
-    for _ in range(8):
+    force_final_summary = False
+    for round_idx in range(MAX_TOOL_ROUNDS):
         try:
             kwargs: Dict[str, Any] = {
                 "model": model,
                 "messages": api_messages,
-                "max_tokens": 8192,
+                "max_tokens": CHAT_MAX_TOKENS,
             }
             if system_prompt:
                 kwargs["system"] = system_prompt[:50000]
@@ -298,13 +367,16 @@ async def _stream_anthropic(
                     result = _as_text(await execute_tool_call(
                         tool_call["name"], tool_call["input"], session_id=session_id, project_path=project_path
                     ))
-                    yield _sse({"type": "tool_result", "name": tool_call["name"], "result": result[:8000]})
+                    yield _sse({"type": "tool_result", "name": tool_call["name"], "result": result})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_call["id"],
-                        "content": result,
+                        "content": _compact_tool_result_for_model(result),
                     })
                 api_messages.append({"role": "user", "content": tool_results})
+                if round_idx == MAX_TOOL_ROUNDS - 1:
+                    force_final_summary = True
+                    break
                 continue
 
             break
@@ -318,7 +390,46 @@ async def _stream_anthropic(
             yield _error_event(f"LLM call failed: {exc}", session_id)
             return
 
+    if force_final_summary:
+        async for event in _stream_anthropic_text_only(client, model, api_messages, system_prompt):
+            yield event
+
     yield _sse({"type": "done"})
+
+
+async def _stream_anthropic_text_only(
+    client: Any,
+    model: str,
+    messages: List[Dict[str, Any]],
+    system_prompt: str,
+) -> AsyncIterator[str]:
+    """Force a no-tools final response after Anthropic tool rounds are exhausted."""
+    try:
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": messages + [{"role": "user", "content": FINAL_TOOL_SUMMARY_PROMPT}],
+            "max_tokens": FINAL_SUMMARY_MAX_TOKENS,
+        }
+        if system_prompt:
+            kwargs["system"] = system_prompt[:50000]
+        async with client.messages.stream(**kwargs) as stream:
+            emitted = False
+            async for event in stream:
+                event_type = getattr(event, "type", "")
+                if event_type != "content_block_delta":
+                    continue
+                delta = event.delta
+                if getattr(delta, "type", "") != "text_delta":
+                    continue
+                text = _as_text(getattr(delta, "text", None))
+                if text:
+                    emitted = True
+                    yield _sse({"type": "delta", "content": text})
+            if not emitted:
+                yield _sse({"type": "delta", "content": "\n\nTool execution reached the limit before the model produced a final summary. Review the tool cards and artifact panel for the latest outputs."})
+    except Exception as exc:
+        logger.exception("Anthropic final summary failed")
+        yield _sse({"type": "delta", "content": f"\n\nTool execution reached the limit, and the forced final summary failed: {exc}"})
 
 
 def _safe_json(value: str):

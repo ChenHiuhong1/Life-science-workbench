@@ -58,3 +58,30 @@ export function BrandLogo({ size = 28, className = '', rounded = 'rounded-[8px]'
     </div>
   );
 }
+
+interface AvatarProps {
+  /** Side length of the avatar in px. */
+  size?: number;
+  className?: string;
+  /** Tailwind rounding class for the avatar tile. */
+  rounded?: string;
+}
+
+/**
+ * Brand avatar rendered from the same `icon.png` that ships as the Windows app
+ * icon / shortcut icon, so the chat avatar, top bar logo, and the desktop
+ * shortcut all show identical artwork.
+ */
+export function BrandAvatar({ size = 28, className = '', rounded = 'rounded-[8px]' }: AvatarProps) {
+  return (
+    <img
+      src="/icon.png"
+      alt="Science Workbench"
+      width={size}
+      height={size}
+      draggable={false}
+      className={`shrink-0 object-cover bg-gradient-to-br from-clay-400 to-clay-600 shadow-subtle ${rounded} ${className}`}
+      style={{ width: size, height: size }}
+    />
+  );
+}

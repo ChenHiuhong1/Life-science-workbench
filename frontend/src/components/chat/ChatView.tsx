@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X } from 'lucide-react';
+import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X, ShieldCheck, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
 import type { AgentInfo, Message } from '@/types';
-import { BrandGlyph } from '@/components/BrandMark';
+import { BrandAvatar } from '@/components/BrandMark';
 import { CodeBlock } from './CodeBlock';
 import { AgentPresets } from './AgentPresets';
 import { ToolCallCard, type ToolEvent } from './ToolCallCard';
@@ -23,7 +23,6 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
   const currentProjectPath =
     projects.find((p) => p.id === currentProjectId)?.local_path || '';
   const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
   // Errors are kept per session so a background stream's failure never leaks
   // into whatever session the user is currently viewing (module isolation).
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -76,7 +75,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [currentSessionId]);
 
-  const currentSessionStreaming = currentSessionId ? !!streamingSessions[currentSessionId] : streaming;
+  const currentSessionStreaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
 
   const send = async () => {
     if (!input.trim()) return;
@@ -106,7 +105,6 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     const streamKey = `${streamSid}:${assistantId}`;
     activeStreamsRef.current.add(streamKey);
     setStreamingState(streamSid, true);
-    setStreaming(true);
     markStreaming(assistantId, true);
 
     try {
@@ -149,18 +147,40 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
               appendToMessage(streamSid, assistantId, evt.content);
             } else if (evt.type === 'tool_call') {
               const tid = `${evt.name}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-              const toolEvent = { id: tid, name: evt.name, args: evt.args, status: 'calling' } as ToolEvent;
+              const cur = (useStore.getState().messagesBySession[streamSid] || []).find((m) => m.id === assistantId);
+              const toolEvent = {
+                id: tid,
+                name: evt.name,
+                args: evt.args,
+                status: 'calling',
+                contentOffset: cur?.content?.length || 0,
+              } as ToolEvent;
               pendingTools[evt.name] = [...(pendingTools[evt.name] || []), toolEvent];
               addToolEvent(toolEvent);
             } else if (evt.type === 'tool_result') {
               const pt = pendingTools[evt.name]?.shift();
-              if (pt) updateToolEvent(pt.id, { status: 'done', result: String(evt.result).slice(0, 4000) });
+              const resultText = String(evt.result ?? '');
+              const failed = /^\[tool error\]|^Error:/i.test(resultText.trim());
+              if (pt) updateToolEvent(pt.id, { status: failed ? 'error' : 'done', result: resultText });
               loadArtifacts(streamSid);
+              // Surface tool failures inline in the conversation so the user
+              // sees them as an assistant reply (matches lobe-chat / assistant-ui
+              // behavior) instead of a silent corner badge with an empty bubble.
+              if (pt && /^\[tool error\]/i.test(resultText)) {
+                const cur = (useStore.getState().messagesBySession[streamSid] || []).find((m) => m.id === assistantId);
+                const prefix = cur?.content?.trim() ? `${cur.content}\n\n` : '';
+                patchMessageById(streamSid, assistantId, { content: `${prefix}Warning: ${resultText.trim()}` });
+              }
             } else if (evt.type === 'error') {
               // Bind the error to its own stream's session so it never leaks
               // into whatever session the user is currently viewing.
               if (!evt.session_id || evt.session_id === streamSid) {
                 setErrorFor(streamSid, evt.message);
+                // Also write it into the assistant bubble so the conversation
+                // always shows what went wrong (no more "blank after error").
+                const cur = (useStore.getState().messagesBySession[streamSid] || []).find((m) => m.id === assistantId);
+                const prefix = cur?.content?.trim() ? `${cur.content}\n\n` : '';
+                patchMessageById(streamSid, assistantId, { content: `${prefix}Warning: ${evt.message}` });
               }
             }
           } catch {}
@@ -174,13 +194,17 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
           : t('chat.output_stopped');
         patchMessageById(streamSid, assistantId, { content: stoppedText });
       } else {
-        setErrorFor(streamSid, e.message || 'Connection failed. Make sure the backend is running.');
+        const msg = e?.message || 'Connection failed. Make sure the backend is running.';
+        setErrorFor(streamSid, msg);
+        // Network/parse failure must also land in the bubble, not vanish.
+        const cur = (useStore.getState().messagesBySession[streamSid] || []).find((m) => m.id === assistantId);
+        const prefix = cur?.content?.trim() ? `${cur.content}\n\n` : '';
+        patchMessageById(streamSid, assistantId, { content: `${prefix}Warning: ${msg}` });
       }
     } finally {
       markStreaming(assistantId, false);
       delete controllersRef.current[streamKey];
       activeStreamsRef.current.delete(streamKey);
-      setStreaming(activeStreamsRef.current.size > 0);
       const stillActiveForSid = Array.from(activeStreamsRef.current)
         .some((key) => key.startsWith(`${streamSid}:`));
       setStreamingState(streamSid, stillActiveForSid);
@@ -220,7 +244,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
             <EmptyState agent={agent} t={t} />
           ) : (
             messages.map((m) => (
-              <MessageBubble key={m.id} message={m} streaming={!!streamingIds[m.id]} />
+              <MessageBubble key={m.id} message={m} streaming={!!streamingIds[m.id]} agent={agent} />
             ))
           )}
           {error && (
@@ -294,16 +318,14 @@ function EmptyState({ agent, t }: { agent: string; t: (k: any) => string }) {
   };
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-clay-400 to-clay-600 text-white grid place-items-center mb-4 shadow-subtle">
-        <BrandGlyph size={26} strokeWidth={2} />
-      </div>
+      <BrandAvatar size={56} rounded="rounded-2xl" className="mb-4" />
       <p className="text-base font-serif text-ink-700 mb-1">{guides[agent] || t('chat.empty.title')}</p>
       <p className="text-xs text-ink-300">{t('chat.empty.desc')}</p>
     </div>
   );
 }
 
-function MessageBubble({ message, streaming }: { message: Message; streaming?: boolean }) {
+function MessageBubble({ message, streaming, agent }: { message: Message; streaming?: boolean; agent: string }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -317,29 +339,169 @@ function MessageBubble({ message, streaming }: { message: Message; streaming?: b
   const showTypingDots = streaming && !message.content && !hasTools;
   return (
     <div className="flex gap-3">
-      <div
-        className={`w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-clay-400 to-clay-600 text-white grid place-items-center shadow-subtle ${
-          streaming ? 'animate-pulse-slow' : ''
-        }`}
-      >
-        <BrandGlyph size={15} strokeWidth={2.1} />
-      </div>
+      <BrandAvatar
+        size={28}
+        rounded={streaming ? 'rounded-full animate-pulse-slow' : 'rounded-full'}
+      />
       <div className="flex-1 min-w-0">
-        {hasTools && (
-          <div className="mb-2">
-            {message.toolEvents!.map((ev) => (
-              <ToolCallCard key={ev.id} event={ev} />
-            ))}
-          </div>
-        )}
         {showTypingDots ? (
           <TypingDots />
         ) : (
-          <div className={`prose prose-sm max-w-none text-sm ${streaming ? 'stream-active' : ''}`}>
-            <MarkdownRender content={message.content} />
-          </div>
+          <MessageTimeline
+            content={message.content}
+            toolEvents={message.toolEvents || []}
+            streaming={streaming}
+          />
+        )}
+        {!streaming && message.content?.trim() && (
+          <AssistantOutputReview content={message.content} agent={agent} />
         )}
       </div>
+    </div>
+  );
+}
+
+function MessageTimeline({
+  content,
+  toolEvents,
+  streaming,
+}: {
+  content: string;
+  toolEvents: ToolEvent[];
+  streaming?: boolean;
+}) {
+  if (!toolEvents.length) {
+    return (
+      <div className={`prose prose-sm max-w-none text-sm ${streaming ? 'stream-active' : ''}`}>
+        <MarkdownRender content={content} />
+      </div>
+    );
+  }
+
+  const ordered = toolEvents.map((event, index) => ({ event, index }))
+    .sort((a, b) => (a.event.contentOffset ?? 0) - (b.event.contentOffset ?? 0) || a.index - b.index);
+  const blocks: JSX.Element[] = [];
+  let cursor = 0;
+
+  ordered.forEach(({ event }, idx) => {
+    const offset = Math.max(cursor, Math.min(event.contentOffset ?? 0, content.length));
+    const chunk = content.slice(cursor, offset);
+    if (chunk) {
+      blocks.push(
+        <div key={`text-${event.id}-${idx}`} className="prose prose-sm max-w-none text-sm">
+          <MarkdownRender content={chunk} />
+        </div>
+      );
+    }
+    blocks.push(<ToolCallCard key={event.id} event={event} />);
+    cursor = offset;
+  });
+
+  const tail = content.slice(cursor);
+  if (tail || streaming) {
+    blocks.push(
+      <div key="text-tail" className={`prose prose-sm max-w-none text-sm ${streaming ? 'stream-active' : ''}`}>
+        <MarkdownRender content={tail} />
+      </div>
+    );
+  }
+
+  return <div>{blocks}</div>;
+}
+
+function AssistantOutputReview({ content, agent }: { content: string; agent: string }) {
+  const lang = useI18n((s) => s.lang);
+  const projects = useStore((s) => s.projects);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+  const currentProjectPath =
+    projects.find((p) => p.id === currentProjectId)?.local_path || '';
+  const [open, setOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [review, setReview] = useState('');
+  const [error, setError] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const reviewType = content.includes('```') ? 'code' : agent === 'document' ? 'document' : 'assistant_output';
+
+  const runReview = async () => {
+    if (reviewing) {
+      abortRef.current?.abort();
+      return;
+    }
+    setOpen(true);
+    setReview('');
+    setError('');
+    setReviewing(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const resp = await api.reviewDocumentStream(
+        { document_text: content, document_type: reviewType, language: lang, project_path: currentProjectPath },
+        controller.signal
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+      if (!resp.body) throw new Error('No response body');
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let acc = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === 'delta') {
+              acc += evt.content;
+              setReview(acc);
+            } else if (evt.type === 'error') {
+              setError(evt.message);
+            }
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        setError(e.message || 'Review failed.');
+      }
+    } finally {
+      setReviewing(false);
+      abortRef.current = null;
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <button
+        className="inline-flex items-center gap-1.5 rounded-[8px] border border-cream-300 bg-white px-2 py-1 text-[11px] text-ink-500 hover:bg-cream-100"
+        onClick={open && review ? () => setOpen((v) => !v) : runReview}
+        title="Review this output"
+      >
+        {reviewing ? <Loader2 size={12} className="animate-spin text-clay-500" /> : <ShieldCheck size={12} />}
+        <span>{reviewing ? 'Reviewing' : open && review ? 'Hide review' : 'Review output'}</span>
+      </button>
+      {open && (reviewing || review || error) && (
+        <div className="mt-2 rounded-lg border border-cream-300 bg-cream-50 p-3">
+          {error ? (
+            <div className="flex items-start gap-2 text-xs text-err">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span className="whitespace-pre-wrap">{error}</span>
+            </div>
+          ) : review ? (
+            <div className={`prose prose-sm max-w-none text-sm ${reviewing ? 'stream-active' : ''}`}>
+              <MarkdownRender content={review} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-ink-400">
+              <Loader2 size={13} className="animate-spin text-clay-500" />
+              <span>Reviewing...</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 - Always state assumptions when a task depends on missing project files, missing data, unavailable packages, or network limits.
 - Must prefer existing project directories and artifact rules over ad hoc folder creation.
 - Must record generated files with concise titles and relative paths whenever possible.
+- Must keep replies token-lean: conclusion first, compact bullets only when useful, and no pasted full logs unless the user asks for them.
 - Must degrade gracefully: when a tool, package, or network resource is missing, report it and offer a concrete fallback instead of guessing.
 - Do not invent tool output, file paths, package availability, citations, accession numbers, statistics, or experimental parameters.
 
@@ -29,7 +30,9 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 ## Tool Discipline
 
 - Call a tool only when it materially improves accuracy, reproducibility, or traceability; otherwise answer directly.
+- Tool access is keyword-triggered by the latest user request. If a tool is not exposed for the turn, do not imply that it ran.
 - Every code run must use relative output paths so artifacts land in the session's artifact directory.
+- Every code run must set a short, content-matching title so the saved script name follows `NN_content.ext`.
 - Treat every tool result as data to be checked, not as ground truth to be echoed.
 - Never fabricate a tool result you did not receive, and never continue as if a failed tool had succeeded.
 

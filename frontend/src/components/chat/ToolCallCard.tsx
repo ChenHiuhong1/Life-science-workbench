@@ -7,6 +7,7 @@ export interface ToolEvent {
   args?: any;
   status: 'calling' | 'done' | 'error';
   result?: string;
+  contentOffset?: number;
 }
 
 const TOOL_LABELS: Record<string, string> = {

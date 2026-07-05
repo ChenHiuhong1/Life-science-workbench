@@ -143,6 +143,17 @@ def test_pure_helpers():
     assert '"session_id": "sess-42"' in err and '"boom"' in err
 
 
+def test_keyword_triggered_tools():
+    from backend.core.tools import select_triggered_tools
+
+    keys = ["run_python", "run_r", "search_literature"]
+    assert select_triggered_tools(keys, "请画图并分析这个 csv", "bio") == ["run_python"]
+    assert select_triggered_tools(keys, "用 R 画图", "bio") == ["run_r"]
+    assert select_triggered_tools(keys, "找一下 TCF7 相关文献", "brainstorm") == ["search_literature"]
+    assert select_triggered_tools(keys, "简单解释一下这个概念", "chat") == []
+    assert select_triggered_tools(["search_literature"], "TCF7", "literature") == ["search_literature"]
+
+
 def test_stream_openai_none_text_fragments():
     _install_fake_openai([[
         _FakeChunk(_FakeDelta(content=None)),        # <-- would crash pre-fix
@@ -202,6 +213,40 @@ def test_stream_openai_none_tool_arguments():
     assert "error" not in types_seen
 
 
+def test_stream_openai_tool_limit_forces_final_summary():
+    from backend.core import llm, executor
+
+    _install_fake_openai(
+        [[_FakeChunk(_FakeDelta(tool_calls=[
+            _FakeToolCall(index=0, id=f"c{i}", name="search_literature", arguments="{}")
+        ]))] for i in range(llm.MAX_TOOL_ROUNDS)]
+        + [[_FakeChunk(_FakeDelta(content="final summary"))]]
+    )
+
+    async def _fake_exec(name, args, session_id="default", project_path=""):
+        return "RESULT"
+
+    original = executor.execute_tool_call
+    executor.execute_tool_call = _fake_exec
+    try:
+        llm.settings.llm_api_key = "test"
+        llm.settings.llm_base_url = "https://example.com/v1"
+        events = _parse(asyncio.run(_collect(
+            llm._stream_openai(
+                [{"role": "user", "content": "run many steps"}],
+                [{"type": "function", "function": {"name": "search_literature", "parameters": {}}}],
+                "", None, "s-limit", "",
+            )
+        )))
+    finally:
+        executor.execute_tool_call = original
+
+    text = "".join(e.get("content", "") for e in events if e["type"] == "delta")
+    assert "final summary" in text
+    assert events[-1]["type"] == "done"
+    assert not any(e["type"] == "error" for e in events)
+
+
 def test_execute_tool_call_never_raises():
     from backend.core import executor
 
@@ -212,12 +257,72 @@ def test_execute_tool_call_never_raises():
     assert out2 == "Error: code argument is empty"
 
 
+def test_run_code_survives_none_stdout_stderr():
+    """A subprocess that yields None for stdout/stderr must not crash.
+
+    Reproduces the user-facing ``[tool error] run_python failed: unsupported
+    operand type(s) for +: 'NoneType' and 'str'``: on some Windows code paths
+    ``subprocess.run`` returns ``None`` for captured streams, and the old code
+    did ``stdout + stderr`` directly. The fix coerces both to ``""``.
+    """
+    import subprocess
+    from unittest.mock import MagicMock, patch
+
+    from backend.core import executor
+
+    fake_proc = MagicMock()
+    fake_proc.stdout = None
+    fake_proc.stderr = None
+    fake_proc.returncode = 0
+
+    tmp = tempfile.mkdtemp(prefix="sw-none-")
+    with patch.object(subprocess, "run", return_value=fake_proc):
+        result = executor._run_code("print(1)", "python", "sess-none", project_path=tmp)
+    assert result["stdout"] == ""
+    assert result["stderr"] == ""
+    assert result["returncode"] == 0
+
+    formatted = executor._format_run_result(result)
+    assert "[tool error]" not in formatted
+    assert isinstance(formatted, str)
+
+    out = asyncio.run(
+        executor.execute_tool_call("run_python", {"code": "print(1)"}, "sess-none", project_path=tmp)
+    )
+    assert "[tool error]" not in out
+
+
+def test_script_filename_uses_sequence_and_content_slug():
+    import subprocess
+    from unittest.mock import MagicMock, patch
+
+    from backend.core import executor
+
+    fake_proc = MagicMock()
+    fake_proc.stdout = ""
+    fake_proc.stderr = ""
+    fake_proc.returncode = 0
+
+    tmp = tempfile.mkdtemp(prefix="sw-script-")
+    code = "import matplotlib.pyplot as plt\nplt.savefig('qc_violin.png')\n"
+    with patch.object(subprocess, "run", return_value=fake_proc):
+        result = executor._run_code(code, "python", "sess-script", project_path=tmp, title="")
+
+    scripts = [name for name in result["files"] if "/Script/" in name]
+    assert len(scripts) == 1
+    assert scripts[0].endswith("/Script/01_qc_violin.py"), scripts[0]
+
+
 def _run_all():
     tests = [
         test_pure_helpers,
+        test_keyword_triggered_tools,
         test_stream_openai_none_text_fragments,
         test_stream_openai_none_tool_arguments,
+        test_stream_openai_tool_limit_forces_final_summary,
         test_execute_tool_call_never_raises,
+        test_run_code_survives_none_stdout_stderr,
+        test_script_filename_uses_sequence_and_content_slug,
     ]
     failures = 0
     for test in tests:

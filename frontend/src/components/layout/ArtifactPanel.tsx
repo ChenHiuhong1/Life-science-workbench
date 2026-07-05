@@ -4,24 +4,33 @@ import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
 
-function fileCategory(name: string): 'image' | 'data' | 'doc' {
+type FileCategory = 'Figure' | 'Table' | 'Script' | 'Data' | 'Document';
+
+function fileCategory(name: string): FileCategory {
+  const parts = name.split(/[\\/]/);
+  const folder = parts.length > 1 ? parts[parts.length - 2] : '';
+  if (['Figure', 'Table', 'Script', 'Data', 'Document'].includes(folder)) {
+    return folder as FileCategory;
+  }
   const ext = name.split('.').pop()?.toLowerCase() || '';
-  if (['png', 'jpg', 'jpeg', 'svg', 'tiff', 'tif'].includes(ext)) return 'image';
-  if (['csv', 'tsv', 'xlsx', 'xls', 'h5ad', 'h5', 'npy', 'npz', 'pkl', 'parquet', 'json'].includes(ext)) return 'data';
-  return 'doc';
+  if (['png', 'jpg', 'jpeg', 'svg', 'tiff', 'tif', 'pdf'].includes(ext)) return 'Figure';
+  if (['csv', 'tsv', 'xlsx', 'xls', 'parquet', 'json'].includes(ext)) return 'Table';
+  if (['py', 'r', 'ipynb'].includes(ext)) return 'Script';
+  if (['h5ad', 'h5', 'npy', 'npz', 'pkl'].includes(ext)) return 'Data';
+  return 'Document';
 }
 
 function FileIcon({ name }: { name: string }) {
   const cat = fileCategory(name);
-  if (cat === 'image') return <Image size={12} className="text-clay-500 shrink-0" />;
-  if (cat === 'data') return <FileSpreadsheet size={12} className="text-ink-500 shrink-0" />;
+  if (cat === 'Figure') return <Image size={12} className="text-clay-500 shrink-0" />;
+  if (cat === 'Table' || cat === 'Data') return <FileSpreadsheet size={12} className="text-ink-500 shrink-0" />;
   return <FileText size={12} className="text-ink-500 shrink-0" />;
 }
 
 interface FileItem {
   path: string;
   name: string;
-  category: 'image' | 'data' | 'doc';
+  category: FileCategory;
   artId: string;
   artTitle: string;
   projectPath?: string;
@@ -124,7 +133,8 @@ export function ArtifactPanel() {
 
 function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => void }) {
   const url = api.artifactFileUrl(item.path, item.projectPath);
-  const isImage = item.category === 'image';
+  const ext = item.name.split('.').pop()?.toLowerCase() || '';
+  const isImage = item.category === 'Figure' && ['png', 'jpg', 'jpeg', 'svg', 'tiff', 'tif'].includes(ext);
 
   const showInFolder = async () => {
     try {
@@ -160,7 +170,7 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
         <div className="rounded-lg border border-cream-300 bg-cream-50 p-3 text-center">
           <FileText size={24} className="mx-auto text-ink-400 mb-1.5" />
           <p className="text-xs text-ink-500 break-all">{item.name}</p>
-          <p className="text-[10px] text-ink-300 mt-0.5">{item.category === 'data' ? 'Data file' : 'Document'}</p>
+          <p className="text-[10px] text-ink-300 mt-0.5">{item.category}</p>
         </div>
       )}
 

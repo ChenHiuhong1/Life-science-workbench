@@ -1,6 +1,6 @@
 [package]
 name = "science-workbench"
-version = "0.1.4"
+version = "0.1.5"
 description = "Private scientific workbench"
 authors = ["you"]
 edition = "2021"

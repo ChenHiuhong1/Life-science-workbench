@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..core.agent_registry import registry
 from ..core.llm import stream_chat
-from ..core.tools import tools_for
+from ..core.tools import select_triggered_tools, tools_for
 from ..db.database import get_db
 from ..db.models import Message, Project, Session as SessionModel
 
@@ -67,7 +67,12 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
         ))
         db.commit()
 
-    tools = tools_for(agent.tools)
+    latest_user_text = next((message["content"] for message in reversed(messages) if message["role"] == "user"), "")
+    triggered_tool_keys = select_triggered_tools(agent.tools, latest_user_text, agent.key)
+    tools = tools_for(triggered_tool_keys)
+    logger.debug(
+        f"[tools] session={req.session_id} agent={agent.key} triggered={triggered_tool_keys or []}"
+    )
     _maybe_update_title(db, req.session_id, messages)
 
     async def generate():
@@ -158,6 +163,26 @@ _REVIEW_TYPE_LABEL = {
     "manuscript": "manuscript",
     "protocol": "wet-lab protocol",
     "proposal": "research proposal / study design",
+    "document": "scientific document",
+    "code": "analysis code / script",
+    "assistant_output": "assistant output",
+}
+
+
+_REVIEW_INSTRUCTIONS = {
+    "code": (
+        "Review the following code or script for correctness, reproducibility, safe file paths, dependency "
+        "assumptions, error handling, statistical/analysis validity, and whether expected Figure/Table/Script/Data "
+        "artifacts are saved clearly. Output a checkable, severity-sorted list. For every item include status "
+        "(verified / needs check / violation), location (line, block, or quote), problem, and concrete revision "
+        "advice. End with the top 3 fixes.\n\n"
+    ),
+    "assistant_output": (
+        "Review the following assistant output for completeness, internal consistency, unsupported claims, missing "
+        "artifact summaries, missing visual/figure checks, unclear file paths, and whether the answer actually "
+        "resolves the user's request. Output a checkable, severity-sorted list with status, location, problem, "
+        "and concrete revision advice. End with the top 3 fixes.\n\n"
+    ),
 }
 
 
@@ -181,15 +206,21 @@ async def review_document(req: ReviewDocumentRequest, request: Request):
     system_prompt += "\n\n" + _language_instruction(req.language)
 
     doc_label = _REVIEW_TYPE_LABEL.get(req.document_type, req.document_type or "document")
-    instruction = (
-        f"Perform a full review of the following {doc_label}. Output a checkable, "
-        "severity-sorted list. For every item include status (verified / needs check / "
-        "violation), location (section, line, or quote), problem, and concrete revision "
-        "advice. Do not mark anything as verified unless the document or a cited source "
-        "clearly supports it. End with a short overall assessment and the top 3 priority "
-        "revisions.\n\n"
-        f"=== {doc_label.upper()} BEGIN ===\n{document_body}\n=== {doc_label.upper()} END ==="
-    )
+    if req.document_type in _REVIEW_INSTRUCTIONS:
+        instruction = (
+            _REVIEW_INSTRUCTIONS[req.document_type]
+            + f"=== {doc_label.upper()} BEGIN ===\n{document_body}\n=== {doc_label.upper()} END ==="
+        )
+    else:
+        instruction = (
+            f"Perform a full review of the following {doc_label}. Output a checkable, "
+            "severity-sorted list. For every item include status (verified / needs check / "
+            "violation), location (section, line, or quote), problem, and concrete revision "
+            "advice. Do not mark anything as verified unless the document or a cited source "
+            "clearly supports it. End with a short overall assessment and the top 3 priority "
+            "revisions.\n\n"
+            f"=== {doc_label.upper()} BEGIN ===\n{document_body}\n=== {doc_label.upper()} END ==="
+        )
 
     messages = [{"role": "user", "content": instruction}]
     review_session = f"review-{uuid.uuid4().hex[:12]}"
