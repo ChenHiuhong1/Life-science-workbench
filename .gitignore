@@ -36,6 +36,11 @@ src-tauri/binaries/
 .idea/
 .vscode/
 
+# User long-term memory (AGENTS.md) — per-project and global user content.
+# A default backend/AGENTS.md ships with the repo; project/user copies are ignored.
+AGENTS.md
+!backend/AGENTS.md
+
 # OS noise
 Thumbs.db
 .DS_Store
