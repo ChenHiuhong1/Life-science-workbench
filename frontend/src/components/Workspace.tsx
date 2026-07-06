@@ -10,26 +10,38 @@ export function Workspace({ agents }: { agents: AgentInfo[] }) {
   const agent = useStore((s) => s.agent);
   const currentProjectId = useStore((s) => s.currentProjectId);
 
-  if (agent === 'hpc') {
-    return <HpcView />;
-  }
+  // Keep every agent's view mounted and toggle visibility with CSS instead of
+  // unmounting/mounting on each agent switch. The previous `if (agent === x)
+  // return <X/>` chain tore down a view (and its in-flight stream reader) the
+  // moment the user switched tabs; now a background stream keeps running in its
+  // hidden view and resumes instantly when the user comes back, with no
+  // remount cost competing with whatever the user types in the new agent.
+  const hasProject = !!currentProjectId;
+  const showHpc = agent === 'hpc';
+  const showLiterature = agent === 'literature';
+  // chat-family agents (chat / brainstorm / bio / protocol / reviewer / module)
+  // share one ChatView surface driven by `agent`.
+  const isChatFamily = !showHpc && !showLiterature && agent !== 'document';
+  const showChat = isChatFamily && hasProject;
+  const showDocument = agent === 'document' && hasProject;
 
-  if (agent === 'literature') {
-    return <LiteratureView />;
-  }
-
-  if (agent === 'document') {
-    if (!currentProjectId) {
-      return <NoProject />;
-    }
-    return <DocumentEditor />;
-  }
-
-  if (!currentProjectId) {
-    return <NoProject />;
-  }
-
-  return <ChatView agents={agents} />;
+  return (
+    <>
+      <div className={showHpc ? 'flex-1 flex overflow-hidden' : 'hidden'}>
+        <HpcView />
+      </div>
+      <div className={showLiterature ? 'flex-1 flex overflow-hidden' : 'hidden'}>
+        <LiteratureView />
+      </div>
+      <div className={showDocument ? 'flex-1 flex overflow-hidden' : 'hidden'}>
+        <DocumentEditor />
+      </div>
+      <div className={showChat ? 'flex-1 flex overflow-hidden' : 'hidden'}>
+        <ChatView agents={agents} />
+      </div>
+      {!showHpc && !showLiterature && !showChat && !showDocument && <NoProject />}
+    </>
+  );
 }
 
 function NoProject() {

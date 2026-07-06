@@ -20,12 +20,19 @@ const AGENT_NAV: { key: AgentKey; tKey: any }[] = [
 
 export function Sidebar({ agents }: { agents: AgentInfo[] }) {
   const t = useI18n((s) => s.t);
-  const {
-    agent, setAgent,
-    projects, currentProjectId, selectProject,
-    sessions, currentSessionId, createSession, selectSession,
-    archiveProject, loadProjects, streamingSessions, creatingSession,
-  } = useStore();
+  const agent = useStore((s) => s.agent);
+  const setAgent = useStore((s) => s.setAgent);
+  const projects = useStore((s) => s.projects);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+  const selectProject = useStore((s) => s.selectProject);
+  const sessions = useStore((s) => s.sessions);
+  const currentSessionId = useStore((s) => s.currentSessionId);
+  const createSession = useStore((s) => s.createSession);
+  const selectSession = useStore((s) => s.selectSession);
+  const archiveProject = useStore((s) => s.archiveProject);
+  const loadProjects = useStore((s) => s.loadProjects);
+  const streamingSessions = useStore((s) => s.streamingSessions);
+  const creatingSession = useStore((s) => s.creatingSession);
   const renameSession = useStore((s) => s.renameSession);
   const [newProjOpen, setNewProjOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);

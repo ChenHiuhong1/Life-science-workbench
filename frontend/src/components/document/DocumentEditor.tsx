@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { ShieldCheck, Loader2, FileText, Download, Save } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ShieldCheck, Loader2, FileText, Download, Save, GitCompare, RotateCcw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '@/store';
@@ -17,6 +17,39 @@ const DOC_TYPES: { key: DocType; tKey: any; placeholder: string }[] = [
 ];
 
 const STORAGE_KEY_PREFIX = 'sw-doc:';
+const BASELINE_KEY_PREFIX = 'sw-doc-baseline:';
+const AUTOREVIEW_KEY = 'sw-doc-autoreview';
+// Idle window before a background review fires after the user stops typing.
+// Kept short so the review panel visibly updates as the user writes, which is
+// what makes the "real-time review" feature discoverable.
+const AUTOREVIEW_IDLE_MS = 12_000;
+// Don't bother re-reviewing if the doc changed by fewer than this many chars
+// since the last review (avoids re-running on a single stray keystroke).
+const AUTOREVIEW_MIN_DELTA_CHARS = 40;
+
+// Minimal line-level diff (LCS). Avoids pulling in a diff dependency; documents
+// rarely exceed a few hundred lines so the O(n*m) table is fine here.
+interface DiffLine { type: 'eq' | 'add' | 'del'; text: string; }
+function lineDiff(a: string[], b: string[]): DiffLine[] {
+  const n = a.length, m = b.length;
+  // dp[i][j] = LCS length of a[i:], b[j:]
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out: DiffLine[] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ type: 'eq', text: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: 'del', text: a[i] }); i++; }
+    else { out.push({ type: 'add', text: b[j] }); j++; }
+  }
+  while (i < n) { out.push({ type: 'del', text: a[i++] }); }
+  while (j < m) { out.push({ type: 'add', text: b[j++] }); }
+  return out;
+}
 
 export function DocumentEditor() {
   const t = useI18n((s) => s.t);
@@ -47,7 +80,62 @@ export function DocumentEditor() {
   const [reviewing, setReviewing] = useState(false);
   const [reviewError, setReviewError] = useState('');
   const [savedHint, setSavedHint] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  // Baseline snapshot for "what changed since last review" tracking. Defaults
+  // to the loaded draft so the diff is meaningful from the first edit.
+  const [baseline, setBaseline] = useState<string>('');
+  const [showDiff, setShowDiff] = useState(false);
+  // Live review toggle. Defaults ON so the feature is visible: as the user
+  // writes, the right-hand review panel streams a fresh review after a short
+  // idle window. The user can turn it off to review manually.
+  const [autoReview, setAutoReview] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(AUTOREVIEW_KEY);
+      // Default to enabled when never set before.
+      return stored === null ? true : stored === '1';
+    } catch { return true; }
+  });
+  // Tracks the document length at the time of the last (auto or manual)
+  // review, so we only re-run when enough has changed to be worth it.
+  const lastReviewedLenRef = useRef<number>(0);
+  // Counts down (seconds) to the next scheduled auto-review for visibility.
+  const [nextReviewIn, setNextReviewIn] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Initialise baseline from storage / current draft once per project.
+  useEffect(() => {
+    if (!currentProjectId) return;
+    let b = '';
+    try { b = localStorage.getItem(`${BASELINE_KEY_PREFIX}${currentProjectId}`) || ''; } catch {}
+    setBaseline(b || text);
+    setLastSavedAt(Date.now());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProjectId]);
+
+  // Derived doc stats. Recomputed only when text changes; cheap (single pass).
+  const stats = useMemo(() => {
+    const lines = text ? text.split('\n') : [];
+    const words = (text.match(/\S+/g) || []).length;
+    const sections = (text.match(/^#{1,3}\s+\S/gm) || []).length;
+    return { lines: lines.length, words, chars: text.length, sections };
+  }, [text]);
+
+  // Line-level diff vs baseline; recompute lazily only when the diff panel
+  // is open. Keeps typing latency independent of document length.
+  const diff = useMemo(() => {
+    if (!showDiff) return null;
+    return lineDiff(baseline.split('\n'), text.split('\n'));
+  }, [showDiff, baseline, text]);
+
+  const diffSummary = useMemo(() => {
+    if (!text && !baseline) return { added: 0, removed: 0 };
+    const d = lineDiff(baseline.split('\n'), text.split('\n'));
+    return {
+      added: d.filter((x) => x.type === 'add').length,
+      removed: d.filter((x) => x.type === 'del').length,
+    };
+  }, [baseline, text]);
 
   const handleTypeChange = (next: DocType) => {
     setDocType(next);
@@ -61,8 +149,56 @@ export function DocumentEditor() {
     setText(next);
     if (currentProjectId) {
       try { localStorage.setItem(`${STORAGE_KEY_PREFIX}${currentProjectId}`, next); } catch {}
+      setLastSavedAt(Date.now());
     }
   };
+
+  const resetBaseline = () => {
+    setBaseline(text);
+    if (currentProjectId) {
+      try { localStorage.setItem(`${BASELINE_KEY_PREFIX}${currentProjectId}`, text); } catch {}
+    }
+  };
+
+  // Persist the auto-review toggle across reloads.
+  useEffect(() => {
+    try { localStorage.setItem(AUTOREVIEW_KEY, autoReview ? '1' : '0'); } catch {}
+  }, [autoReview]);
+
+  // Always-current reference to the review runner so the idle effect below can
+  // call the latest version without re-subscribing on every render.
+  const runReviewRef = useRef<() => void>(() => {});
+
+  // Idle auto-review: when enabled, schedule a review AUTOREVIEW_IDLE_MS after
+  // the last edit. Re-runs are skipped while a review is in flight or when the
+  // document has not changed enough since the last review. A visible countdown
+  // tells the user a live review is pending, which makes the feature
+  // discoverable (the original symptom was "no real-time review" — it was
+  // actually running but invisibly and only after 30s).
+  useEffect(() => {
+    if (!autoReview || !text.trim() || reviewing) {
+      setNextReviewIn(null);
+      return;
+    }
+    const deltaSinceReview = text.length - lastReviewedLenRef.current;
+    // Not enough change to justify another API call yet.
+    if (deltaSinceReview >= 0 && deltaSinceReview < AUTOREVIEW_MIN_DELTA_CHARS) {
+      setNextReviewIn(null);
+      return;
+    }
+    const totalSecs = Math.round(AUTOREVIEW_IDLE_MS / 1000);
+    setNextReviewIn(totalSecs);
+    const fireAt = Date.now() + AUTOREVIEW_IDLE_MS;
+    const fire = () => { runReviewRef.current(); };
+    const timeout = setTimeout(fire, AUTOREVIEW_IDLE_MS);
+    const ticker = setInterval(() => {
+      const remaining = Math.max(0, Math.round((fireAt - Date.now()) / 1000));
+      setNextReviewIn(remaining);
+      if (remaining <= 0) clearInterval(ticker);
+    }, 500);
+    return () => { clearTimeout(timeout); clearInterval(ticker); setNextReviewIn(null); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoReview, text, reviewing]);
 
   const persistTitle = (next: string) => {
     setTitle(next);
@@ -73,6 +209,9 @@ export function DocumentEditor() {
 
   const runReview = async () => {
     if (!text.trim()) return;
+    // Snapshot the length we reviewed from so the idle effect can decide
+    // whether a subsequent edit is big enough to warrant another pass.
+    const reviewedLen = text.length;
     setReviewing(true);
     setReview('');
     setReviewError('');
@@ -108,6 +247,7 @@ export function DocumentEditor() {
           } catch {}
         }
       }
+      lastReviewedLenRef.current = reviewedLen;
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         setReviewError(e.message || 'Review failed. Make sure the backend is running and an API key is set.');
@@ -117,6 +257,8 @@ export function DocumentEditor() {
       abortRef.current = null;
     }
   };
+  // Keep the ref pointed at the freshest runner for the idle effect.
+  runReviewRef.current = runReview;
 
   const stopReview = () => abortRef.current?.abort();
 
@@ -190,12 +332,75 @@ export function DocumentEditor() {
           </button>
         </div>
 
+        {/* Stats + change-tracking bar. Always visible while editing so the user
+            can see at a glance how much has been written and how much has
+            drifted from the last review baseline. */}
+        <div className="shrink-0 flex items-center gap-3 px-3 py-1 border-b border-cream-200 bg-cream-50 text-[11px] text-ink-500">
+          <span title="Lines"><strong className="text-ink-700">{stats.lines}</strong> lines</span>
+          <span className="text-cream-300">·</span>
+          <span title="Words"><strong className="text-ink-700">{stats.words}</strong> words</span>
+          <span className="text-cream-300">·</span>
+          <span title="Sections"><strong className="text-ink-700">{stats.sections}</strong> sections</span>
+          <span className="text-cream-300">·</span>
+          <span title="Diff vs baseline since last review">
+            <span className={diffSummary.added ? 'text-ok font-medium' : 'text-ink-400'}>+{diffSummary.added}</span>
+            <span className="text-ink-300"> / </span>
+            <span className={diffSummary.removed ? 'text-err font-medium' : 'text-ink-400'}>-{diffSummary.removed}</span>
+            <span className="text-ink-300 ml-1">since baseline</span>
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <label className="flex items-center gap-1 cursor-pointer select-none text-ink-400 hover:text-ink-600" title="Live review: re-runs shortly after you stop editing">
+              <input
+                type="checkbox"
+                className="accent-clay-500 h-3 w-3"
+                checked={autoReview}
+                onChange={(e) => setAutoReview(e.target.checked)}
+              />
+              <span>Live review</span>
+            </label>
+            {autoReview && nextReviewIn != null && !reviewing && (
+              <span className="flex items-center gap-1 text-clay-500" title="A fresh review will run automatically">
+                <Loader2 size={11} className="animate-spin opacity-70" />
+                <span>review in {nextReviewIn}s</span>
+              </span>
+            )}
+            {autoReview && reviewing && (
+              <span className="flex items-center gap-1 text-clay-500" title="Review is streaming into the right panel">
+                <Loader2 size={11} className="animate-spin" />
+                <span>reviewing…</span>
+              </span>
+            )}
+            <button
+              className="flex items-center gap-1 text-ink-400 hover:text-ink-700"
+              onClick={() => setShowDiff((v) => !v)}
+              title="Toggle diff view"
+            >
+              <GitCompare size={11} />
+              <span>{showDiff ? 'Hide diff' : 'Show diff'}</span>
+            </button>
+            <button
+              className="flex items-center gap-1 text-ink-400 hover:text-ink-700"
+              onClick={resetBaseline}
+              title="Set current text as the new baseline"
+            >
+              <RotateCcw size={11} />
+              <span>Reset baseline</span>
+            </button>
+            {lastSavedAt && (
+              <span className="text-ink-300" title="Last autosave">
+                saved {new Date(lastSavedAt).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink-300 border-b border-cream-200">
               {t('doc.editor')}
             </div>
             <textarea
+              ref={textareaRef}
               className="flex-1 w-full resize-none bg-cream-50 text-sm text-ink-900 font-mono
                          focus:outline-none px-4 py-3 leading-relaxed"
               value={text}
@@ -203,6 +408,7 @@ export function DocumentEditor() {
               placeholder={DOC_TYPES.find((d) => d.key === docType)?.placeholder}
               spellCheck={false}
             />
+            {showDiff && diff && <DiffView diff={diff} />}
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden border-l border-cream-200 bg-white">
@@ -241,5 +447,26 @@ export function DocumentEditor() {
         onClear={() => { setReview(''); setReviewError(''); }}
       />
     </section>
+  );
+}
+
+function DiffView({ diff }: { diff: DiffLine[] }) {
+  return (
+    <div className="shrink-0 max-h-56 overflow-y-auto border-t border-cream-300 bg-[#1E1E1E] text-[11px] font-mono">
+      {diff.map((line, idx) => {
+        const cls = line.type === 'add'
+          ? 'bg-[#1e3a2e] text-[#b9e6c4]'
+          : line.type === 'del'
+            ? 'bg-[#3a1e1e] text-[#e6b9b9]'
+            : 'text-[#9a9a9a]';
+        const marker = line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ';
+        return (
+          <div key={idx} className={`px-3 py-0.5 whitespace-pre-wrap break-words ${cls}`}>
+            <span className="select-none opacity-60 mr-2">{marker}</span>
+            {line.text || ' '}
+          </div>
+        );
+      })}
+    </div>
   );
 }

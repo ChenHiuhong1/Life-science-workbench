@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { ChevronRight, FileImage, FileText, FolderOpen, Image, FileSpreadsheet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronRight, FileImage, FileText, FolderOpen, Image, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
+import type { Artifact } from '@/types';
 
 type FileCategory = 'Figure' | 'Table' | 'Script' | 'Data' | 'Document';
 
@@ -35,6 +36,7 @@ interface FileItem {
   artTitle: string;
   projectPath?: string;
   created_at?: string;
+  artifact: Artifact;
 }
 
 export function ArtifactPanel() {
@@ -54,6 +56,7 @@ export function ArtifactPanel() {
         artTitle: a.title,
         projectPath: a.project_path || '',
         created_at: a.created_at,
+        artifact: a,
       }))
     )
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -135,6 +138,9 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
   const url = api.artifactFileUrl(item.path, item.projectPath);
   const ext = item.name.split('.').pop()?.toLowerCase() || '';
   const isImage = item.category === 'Figure' && ['png', 'jpg', 'jpeg', 'svg', 'tiff', 'tif'].includes(ext);
+  const isPdf = item.category === 'Figure' && ext === 'pdf';
+  const isTable = item.category === 'Table' && ['csv', 'tsv'].includes(ext);
+  const [showCode, setShowCode] = useState(false);
 
   const showInFolder = async () => {
     try {
@@ -161,16 +167,55 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
       <div className="text-[10px] text-ink-300 truncate">From: {item.artTitle}</div>
 
       {isImage && (
-        <div className="rounded-lg overflow-hidden border border-cream-300 bg-cream-50">
-          <img src={url} alt={item.name} className="w-full" />
+        <a href={url} target="_blank" rel="noreferrer" title="Open full size">
+          <div className="rounded-lg overflow-hidden border border-cream-300 bg-cream-50">
+            <img src={url} alt={item.name} className="w-full" />
+          </div>
+        </a>
+      )}
+
+      {isPdf && (
+        <div className="rounded-lg overflow-hidden border border-cream-300 bg-cream-50 h-72">
+          <object data={url} type="application/pdf" className="w-full h-full" title={item.name}>
+            <div className="p-3 text-center">
+              <FileText size={24} className="mx-auto text-ink-400 mb-1.5" />
+              <p className="text-xs text-ink-500 break-all">{item.name}</p>
+              <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-clay-600 underline">Open PDF</a>
+            </div>
+          </object>
         </div>
       )}
 
-      {!isImage && (
+      {isTable && <TablePreview path={item.path} projectPath={item.projectPath} ext={ext} />}
+
+      {!isImage && !isPdf && !isTable && (
         <div className="rounded-lg border border-cream-300 bg-cream-50 p-3 text-center">
           <FileText size={24} className="mx-auto text-ink-400 mb-1.5" />
           <p className="text-xs text-ink-500 break-all">{item.name}</p>
           <p className="text-[10px] text-ink-300 mt-0.5">{item.category}</p>
+        </div>
+      )}
+
+      {/* Inline review + code from the artifact record. The backend already
+          embeds a shape note ("12 rows x 4 cols") and an ```sw-table preview
+          in artifact.output; surface it here so the panel isn't code-only. */}
+      {item.artifact?.output && (
+        <ArtifactReview output={item.artifact.output} />
+      )}
+
+      {item.artifact?.code && (
+        <div>
+          <button
+            className="text-[10px] uppercase tracking-wider text-ink-400 hover:text-ink-700"
+            onClick={() => setShowCode((v) => !v)}
+          >
+            {showCode ? 'Hide' : 'Show'} source ({item.artifact.language || 'code'})
+          </button>
+          {showCode && (
+            <pre className="mt-1 bg-[#1E1E1E] text-[#E4E4E4] rounded p-2 text-[11px] font-mono overflow-x-auto max-h-48 whitespace-pre-wrap">
+              {item.artifact.code}
+            </pre>
+          )}
         </div>
       )}
 
@@ -181,6 +226,91 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
       >
         <FolderOpen size={13} /> Show in Folder
       </button>
+    </div>
+  );
+}
+
+// Fetch a CSV/TSV artifact and render its first ~50 rows as a real table.
+// Renders a fenced ```sw-table block from the artifact review when present
+// (the backend already wrote one for tables it generated), and otherwise
+// streams the raw file from the artifact file endpoint.
+function TablePreview({ path, projectPath, ext }: { path: string; projectPath?: string; ext: string }) {
+  const [rows, setRows] = useState<string[][] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    setRows(null);
+    (async () => {
+      try {
+        const resp = await fetch(api.artifactFileUrl(path, projectPath));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+        const delim = ext === 'tsv' ? '\t' : ',';
+        const all = text.split(/\r?\n/).filter((l) => l.length > 0).map((l) => l.split(delim));
+        if (cancelled) return;
+        setRows(all.slice(0, 51));
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || 'Failed to load table');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [path, projectPath, ext]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-6 text-ink-400">
+        <Loader2 size={14} className="animate-spin mr-1.5" />
+        <span className="text-xs">Loading table...</span>
+      </div>
+    );
+  }
+  if (error || !rows || !rows.length) {
+    return (
+      <div className="rounded-lg border border-cream-300 bg-cream-50 p-3 text-center">
+        <FileSpreadsheet size={20} className="mx-auto text-ink-400 mb-1" />
+        <p className="text-[11px] text-ink-500">{error || 'Empty table'}</p>
+      </div>
+    );
+  }
+  const [header, ...body] = rows;
+  const truncated = body.length >= 50;
+  return (
+    <div className="rounded-lg border border-cream-300 bg-white overflow-auto max-h-72">
+      <table className="w-full text-[10px]">
+        <thead className="sticky top-0 bg-cream-100">
+          <tr>{header.map((c, i) => <th key={i} className="border border-cream-300 px-1.5 py-1 text-left font-semibold whitespace-nowrap">{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {body.map((r, ri) => (
+            <tr key={ri} className="even:bg-cream-50">
+              {r.map((c, ci) => <td key={ci} className="border border-cream-300 px-1.5 py-0.5 whitespace-nowrap">{c}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {truncated && <div className="text-[10px] text-ink-300 px-2 py-1 border-t border-cream-200">Showing first 50 rows · open file for full data</div>}
+    </div>
+  );
+}
+
+// Pull the prose review (shape notes, visual review, and any ```sw-table
+// preview block) out of an artifact's output and render it inline. The output
+// mixes stdout/stderr with the review section; we only surface the review.
+function ArtifactReview({ output }: { output: string }) {
+  const marker = '--- artifact review ---';
+  const idx = output.indexOf(marker);
+  if (idx < 0) return null;
+  const review = output.slice(idx + marker.length).trim();
+  if (!review) return null;
+  return (
+    <div className="rounded-lg border border-cream-200 bg-cream-50 px-2.5 py-2 text-[11px] text-ink-600 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+      {review}
     </div>
   );
 }

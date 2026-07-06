@@ -94,6 +94,7 @@ export const api = {
     messages: { role: string; content: string }[];
     language: string;
     project_path?: string;
+    reasoning_effort?: string;
   }, signal?: AbortSignal) =>
     fetch(`${BASE}/chat/stream`, {
       method: 'POST',
@@ -141,10 +142,29 @@ export const api = {
 
   saveSettings: (settings: {
     llm_base_url: string; llm_api_key?: string; llm_model: string;
-    reasoning_effort?: 'auto' | 'low' | 'medium' | 'high';
+    reasoning_effort?: 'none' | 'high' | 'max';
     python_executable?: string; r_executable?: string; sandbox_timeout?: number;
   }) => jpost(`${BASE}/settings`, settings),
+  clearApiKey: () => jdel(`${BASE}/settings/api-key`),
   getSettings: () => jget(`${BASE}/settings`),
+  getMemory: (projectPath = '') =>
+    jget(`${BASE}/settings/memory${projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : ''}`) as Promise<{
+      exists: boolean; target_path: string; active_paths: string[]; chars: number; content: string;
+    }>,
+  saveMemory: (projectPath: string, content: string) =>
+    jpost(`${BASE}/settings/memory`, { project_path: projectPath, content }),
+  getModels: () => jget(`${BASE}/settings/models`) as Promise<{
+    current: string;
+    current_context_window: number;
+    current_max_output_tokens: number;
+    current_supports_reasoning_effort: boolean;
+    current_supports_long_context: boolean;
+    models: Array<{
+      id: string; label: string; context_window: number; max_output_tokens: number;
+      supports_reasoning_effort: boolean; supports_long_context: boolean;
+      long_context_window: number | null; long_context_suffix: string | null;
+    }>;
+  }>,
 
   health: () => jget(`${BASE}/health`),
 };

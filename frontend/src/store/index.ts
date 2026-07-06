@@ -2,7 +2,41 @@ import { create } from 'zustand';
 import type { Project, SessionInfo, Message, Artifact, AgentKey } from '@/types';
 import { api } from '@/api/client';
 
-let pendingSessionCreate: Promise<string | null> | null = null;
+const pendingSessionCreates: Partial<Record<string, Promise<string | null>>> = {};
+
+// ---------------------------------------------------------------------------
+// Streaming delta coalescing
+//
+// A model streams dozens of tokens per second, and naively each delta would
+// trigger a full store update + a re-parse of the entire assistant message.
+// While one session is streaming, that re-render competes with whatever the
+// user is doing in another session/agent, which is the main cause of the
+// "switching agents feels laggy while a stream runs" symptom.
+//
+// We buffer per-(session,message) deltas and flush them in a single rAF (or a
+// 16ms timer on the rare non-browser/Tauri-webview without rAF), so the store
+// only updates ~60 times/second total instead of per-token.
+// ---------------------------------------------------------------------------
+interface PendingDelta { msgId: number; text: string; }
+const _pendingDeltas: Record<string, PendingDelta> = {}; // key: `${sid}:${msgId}`
+let _flushScheduled = false;
+const _FLUSH_OPS: Array<() => void> = [];
+
+function _scheduleFlush() {
+  if (_flushScheduled) return;
+  _flushScheduled = true;
+  const run = () => {
+    _flushScheduled = false;
+    // Snapshot then clear so deltas arriving during the flush queue again.
+    const ops = _FLUSH_OPS.splice(0);
+    for (const op of ops) op();
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(run);
+  } else {
+    setTimeout(run, 16);
+  }
+}
 
 interface AppState {
   projects: Project[];
@@ -32,11 +66,13 @@ interface AppState {
   createSession: (mode?: AgentKey) => Promise<string | null>;
   selectSession: (id: string) => Promise<void>;
   renameSession: (id: string, title: string) => Promise<void>;
+  updateSessionTitle: (id: string, title: string) => void;
   setAgent: (agent: AgentKey) => Promise<void>;
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
   appendToLast: (delta: string) => void;
   appendToMessage: (streamSid: string, msgId: number, delta: string) => void;
+  _flushAppend: (streamSid: string, msgId: number, delta: string) => void;
   patchMessageById: (streamSid: string, msgId: number, patch: Partial<Message>) => void;
   setStreamingState: (sid: string | null, active?: boolean) => void;
   loadArtifacts: (sid: string) => Promise<void>;
@@ -82,7 +118,12 @@ export const useStore = create<AppState>((set, get) => ({
     const sessions = await api.listSessions(id);
     set({ sessions });
 
+    // Map "the last session the user was in for this module". Unlike the old
+    // 1:1 mapping, this never *prevents* multiple same-module sessions: it
+    // simply records which one to return to when the user re-opens a module.
     const map: Record<string, string> = {};
+    // sessions come back ordered by updated_at desc, so the first per-mode
+    // entry is the most recently touched session of that module.
     for (const session of sessions) {
       const key = `${id}:${session.mode}`;
       if (!map[key]) map[key] = session.id;
@@ -124,18 +165,26 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   createSession: async (mode) => {
-    if (get().creatingSession && pendingSessionCreate) return pendingSessionCreate;
     const pid = get().currentProjectId;
     if (!pid) return null;
     const selectedMode = mode || get().agent;
+    const pendingKey = `${pid}:${selectedMode}`;
+    const pendingCreate = pendingSessionCreates[pendingKey];
+    if (pendingCreate) return pendingCreate;
+
     set({ creatingSession: true });
-    pendingSessionCreate = (async () => {
+    pendingSessionCreates[pendingKey] = (async () => {
       const session = await api.createSession(pid, selectedMode);
       set({
         sessions: [session, ...get().sessions],
         currentSessionId: session.id,
         messages: [],
         artifacts: [],
+        // Switch the active agent to the new session's module so the preset
+        // chips and input reflect THIS session, not whatever module was active
+        // before. This is the core fix for "new session keeps the old module's
+        // presets".
+        agent: selectedMode,
         agentSessionMap: { ...get().agentSessionMap, [`${pid}:${selectedMode}`]: session.id },
         messagesBySession: { ...get().messagesBySession, [session.id]: [] },
         artifactsBySession: { ...get().artifactsBySession, [session.id]: [] },
@@ -143,10 +192,10 @@ export const useStore = create<AppState>((set, get) => ({
       return session.id;
     })();
     try {
-      return await pendingSessionCreate;
+      return await pendingSessionCreates[pendingKey]!;
     } finally {
-      pendingSessionCreate = null;
-      set({ creatingSession: false });
+      delete pendingSessionCreates[pendingKey];
+      set({ creatingSession: Object.keys(pendingSessionCreates).length > 0 });
     }
   },
 
@@ -171,26 +220,60 @@ export const useStore = create<AppState>((set, get) => ({
       message.id !== -1 && !legacyWelcomeSnippets.some((snippet) => (message.content || '').includes(snippet))
     );
     const session = get().sessions.find((item) => item.id === id);
+    const newAgent = (session?.mode as AgentKey) || get().agent;
+    const pid = get().currentProjectId;
+    // Keep agent + "last active" map in sync with what the user is actually
+    // viewing, so presets and the chat input reflect the selected session's
+    // module rather than the previously-active one.
+    const mapUpdate = pid && session
+      ? { ...get().agentSessionMap, [`${pid}:${session.mode}`]: id }
+      : get().agentSessionMap;
     set({
       currentSessionId: id,
       messages: cleaned,
       artifacts,
       messagesBySession: { ...get().messagesBySession, [id]: cleaned },
       artifactsBySession: { ...get().artifactsBySession, [id]: artifacts },
-      agent: (session?.mode as AgentKey) || get().agent,
+      agent: newAgent,
+      agentSessionMap: mapUpdate,
     });
   },
 
   setAgent: async (agent) => {
     const pid = get().currentProjectId;
+    const prevAgent = get().agent;
     set({ agent });
     if (!pid) return;
+
+    // If the user is already viewing a session that belongs to the target
+    // module, keep them there. This is what lets a freshly-created same-module
+    // session stay active instead of being yanked back to an older one, and
+    // also what stops a module switch from clobbering the chat-family ChatView
+    // when the user is mid-conversation in another module that shares it.
+    const cur = get().currentSessionId;
+    const curSession = cur ? get().sessions.find((s) => s.id === cur) : null;
+    if (curSession && curSession.mode === agent) {
+      // Make this the "last active" session for the module so re-entering it
+      // (after visiting another module) returns here.
+      const mapKey = `${pid}:${agent}`;
+      if (get().agentSessionMap[mapKey] !== cur) {
+        set({ agentSessionMap: { ...get().agentSessionMap, [mapKey]: cur! } });
+      }
+      return;
+    }
+
     const mapKey = `${pid}:${agent}`;
     const sid = get().agentSessionMap[mapKey];
-    if (sid && sid !== get().currentSessionId) {
+    if (sid && sid !== cur) {
       await get().selectSession(sid);
     } else if (!sid) {
+      // No session for this module yet; show an empty surface. A session is
+      // created lazily on first send.
       set({ currentSessionId: null, messages: [], artifacts: [] });
+    } else if (prevAgent !== agent) {
+      // sid === cur but module differs from stored agent: still clear the
+      // displayed messages so we don't show another module's history.
+      await get().selectSession(sid);
     }
   },
 
@@ -200,6 +283,13 @@ export const useStore = create<AppState>((set, get) => ({
     await api.renameSession(id, trimmed);
     set({
       sessions: get().sessions.map((s) => (s.id === id ? { ...s, title: trimmed } : s)),
+    });
+  },
+
+  updateSessionTitle: (id, title) => {
+    if (!title) return;
+    set({
+      sessions: get().sessions.map((s) => (s.id === id ? { ...s, title } : s)),
     });
   },
 
@@ -239,6 +329,25 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   appendToMessage: (streamSid, msgId, delta) => {
+    if (!delta) return;
+    const key = `${streamSid}:${msgId}`;
+    const existing = _pendingDeltas[key];
+    if (existing) {
+      existing.text += delta;
+    } else {
+      _pendingDeltas[key] = { msgId, text: delta };
+      // Register the flush op once per pending key.
+      _FLUSH_OPS.push(() => {
+        const pending = _pendingDeltas[key];
+        delete _pendingDeltas[key];
+        if (!pending) return;
+        get()._flushAppend(streamSid, pending.msgId, pending.text);
+      });
+    }
+    _scheduleFlush();
+  },
+
+  _flushAppend: (streamSid, msgId, delta) => {
     const cur = get().currentSessionId;
     const targetMessages = streamSid === cur
       ? get().messages
@@ -256,6 +365,16 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   patchMessageById: (streamSid, msgId, patch) => {
+    // Drain any buffered streaming text for this message first, so a patch
+    // (e.g. attaching tool events, or writing the final content on error) is
+    // applied on top of the fully-up-to-date content instead of racing a
+    // pending rAF flush.
+    const key = `${streamSid}:${msgId}`;
+    const pending = _pendingDeltas[key];
+    if (pending) {
+      delete _pendingDeltas[key];
+      get()._flushAppend(streamSid, msgId, pending.text);
+    }
     const cur = get().currentSessionId;
     const targetMessages = streamSid === cur
       ? get().messages

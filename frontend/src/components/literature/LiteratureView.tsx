@@ -35,7 +35,12 @@ export function LiteratureView() {
       if (papers.length === 0) {
         setError('No relevant papers found. Try different keywords or more sources.');
       } else if (failed.length) {
-        const names = failed.map((source) => ({ pubmed: 'PubMed', arxiv: 'arXiv' }[source] || source)).join(', ');
+        const names = failed.map((source) => ({
+          pubmed: 'PubMed',
+          arxiv: 'arXiv',
+          crossref: 'CrossRef',
+          semantic_scholar: 'Semantic Scholar',
+        }[source] || source)).join(', ');
         setError(`${names} failed to connect. Results were returned from the remaining sources.`);
       }
     } catch (e: any) {

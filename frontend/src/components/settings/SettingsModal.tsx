@@ -1,17 +1,25 @@
 import { useEffect, useState } from 'react';
-import { X, Check, KeyRound, Terminal, Globe, Brain, FolderOpen } from 'lucide-react';
+import { X, Check, KeyRound, Terminal, Globe, Brain, FolderOpen, Trash2, NotebookPen } from 'lucide-react';
 import { useI18n } from '@/i18n';
+import { useStore } from '@/store';
 import { api } from '@/api/client';
 
 const PRESETS = [
-  { name: 'Zhipu GLM', base: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4-plus' },
+  // glm-5.2 base id already provides the full 1M context (verified by live
+  // probe — it accepts 400K-token inputs natively). Don't expose a [1m]
+  // variant: that suffix returns "model not found" on the Anthropic endpoint.
+  { name: 'GLM-5.2 (1M context)', base: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-5.2' },
+  { name: 'GLM-4.6', base: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4.6' },
+  { name: 'GLM-4-Plus', base: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4-plus' },
   { name: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { name: 'Kimi (Moonshot)', base: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
   { name: 'OpenAI', base: 'https://api.openai.com/v1', model: 'gpt-4o' },
   { name: 'Local Ollama', base: 'http://localhost:11434/v1', model: 'qwen2.5:14b' },
 ];
 
-type ReasoningEffort = 'auto' | 'low' | 'medium' | 'high';
+// Zhipu GLM exposes three thinking tiers: none / high / max. These are the
+// values stored in .env (REASONING_EFFORT) and sent per-message from chat.
+type ReasoningEffort = 'none' | 'high' | 'max';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const t = useI18n((s) => s.t);
@@ -20,7 +28,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('auto');
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('max');
   const [hasKey, setHasKey] = useState(false);
   const [python, setPython] = useState('python');
   const [r, setR] = useState('Rscript');
@@ -29,12 +37,31 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [workspacesDir, setWorkspacesDir] = useState('');
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  // AGENTS.md long-term memory editor.
+  const projects = useStore((s) => s.projects);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+  const currentProjectPath = projects.find((p) => p.id === currentProjectId)?.local_path || '';
+  const [memoryContent, setMemoryContent] = useState('');
+  const [memoryPath, setMemoryPath] = useState('');
+  const [memoryDirty, setMemoryDirty] = useState(false);
+
+  useEffect(() => {
+    // Load the effective AGENTS.md (per-project when a folder is bound, else global).
+    setMemoryDirty(false);
+    api.getMemory(currentProjectPath).then((m) => {
+      setMemoryContent(m.content);
+      setMemoryPath(m.target_path);
+    }).catch(() => { setMemoryContent(''); setMemoryPath(''); });
+  }, [currentProjectPath]);
 
   useEffect(() => {
     api.getSettings().then((s) => {
       setBaseUrl(s.llm_base_url);
       setModel(s.llm_model);
-      setReasoningEffort(s.reasoning_effort || 'auto');
+      // Normalise legacy values (auto/low/medium) into the 3 GLM tiers.
+      const raw = (s.reasoning_effort || 'max') as string;
+      const norm: ReasoningEffort = raw === 'none' ? 'none' : raw === 'high' ? 'high' : 'max';
+      setReasoningEffort(norm);
       setHasKey(s.has_api_key);
       setPython(s.python_executable);
       setR(s.r_executable);
@@ -57,7 +84,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     });
     setSaved(true);
     setHasKey(true);
+    setApiKey('');
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const clearApiKey = async () => {
+    if (!confirm('Clear the stored API key?\n\nThis removes the key from the local .env file on this machine. Other settings are kept. This cannot be undone.')) {
+      return;
+    }
+    try {
+      await api.clearApiKey();
+      setApiKey('');
+      setHasKey(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // surface via saved flag inversion is overkill; the dialog stays usable.
+    }
   };
 
   const openAppHome = async () => {
@@ -126,13 +169,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 <input className="input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
               </Field>
               <Field label={t('settings.api_key')}>
-                <input
-                  type="password"
-                  className="input"
-                  placeholder={hasKey ? 'Configured. Leave blank to keep the existing key.' : 'sk-...'}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    className="input flex-1"
+                    placeholder={hasKey ? 'Configured. Leave blank to keep the existing key.' : 'sk-...'}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                  />
+                  {hasKey && (
+                    <button
+                      type="button"
+                      onClick={clearApiKey}
+                      title="Remove the stored API key from this machine"
+                      className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-[8px]
+                                 border border-err/30 text-err hover:bg-[#FDF0F0]"
+                    >
+                      <Trash2 size={12} /> Clear
+                    </button>
+                  )}
+                </div>
               </Field>
               <Field label={t('settings.model')}>
                 <input className="input" value={model} onChange={(e) => setModel(e.target.value)} />
@@ -141,12 +197,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
             <Section icon={<Brain size={14} />} title={t('settings.thinking')}>
               <Field label={t('settings.reasoning_effort')}>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   {([
-                    ['auto', 'Auto'],
-                    ['low', 'Low'],
-                    ['medium', 'Medium'],
+                    ['none', 'No thinking'],
                     ['high', 'High'],
+                    ['max', 'Highest'],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
@@ -163,7 +218,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
                 <p className="text-[10px] text-ink-300 mt-1 leading-relaxed">
-                  High effort is better for complex analysis and review. Low effort keeps quick chats snappy.
+                  Highest is best for complex analysis and review. No thinking keeps quick chats snappy. This is the default for new chats; you can also override it per message in the chat box.
                 </p>
               </Field>
             </Section>
@@ -174,6 +229,37 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 <PathRow label="Workspaces" value={workspacesDir} />
                 <button className="btn-outline text-xs mt-1" type="button" onClick={openAppHome}>
                   <FolderOpen size={13} /> Open App Folder
+                </button>
+              </div>
+            </Section>
+
+            <Section icon={<NotebookPen size={14} />} title="Project memory (AGENTS.md)">
+              <p className="text-[11px] text-ink-400 leading-relaxed -mt-1">
+                Durable instructions injected into every agent for this project (like CLAUDE.md). Plain Markdown. Empty = no memory. Saved to{' '}
+                <span className="font-mono text-ink-500 break-all">{memoryPath || '(none)'}</span>.
+              </p>
+              <textarea
+                className="input font-mono text-xs min-h-[120px]"
+                placeholder={'# Project memory\n\n- This project uses GRCh38.\n- Prefer R (Seurat) for single-cell.\n- Always cite package versions in Methods.'}
+                value={memoryContent}
+                onChange={(e) => { setMemoryContent(e.target.value); setMemoryDirty(true); }}
+                rows={6}
+                spellCheck={false}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-ink-300">{memoryContent.length} chars</span>
+                <button
+                  className="btn-primary text-xs"
+                  type="button"
+                  disabled={!memoryDirty}
+                  onClick={async () => {
+                    await api.saveMemory(currentProjectPath, memoryContent);
+                    setMemoryDirty(false);
+                    setSaved(true);
+                    setTimeout(() => setSaved(false), 1500);
+                  }}
+                >
+                  {saved ? <><Check size={13} /> Saved</> : 'Save memory'}
                 </button>
               </div>
             </Section>

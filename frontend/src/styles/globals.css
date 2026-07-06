@@ -7,6 +7,12 @@
     height: 100%;
     margin: 0;
   }
+  html {
+    /* Bump the root font-size up so every rem-based Tailwind utility
+       (text-sm, text-base, px-3, ...) scales together. This is the cleanest
+       way to enlarge the whole UI without rewriting per-component classes. */
+    font-size: 19px;
+  }
   body {
     @apply bg-cream-50 text-ink-900 font-serif antialiased;
     font-feature-settings: 'cv11', 'ss01';
@@ -58,23 +64,23 @@
 ::-webkit-scrollbar-thumb:hover { background: #C8C6BA; }
 
 .prose pre {
-  @apply bg-[#1E1E1E] text-[#E4E4E4] rounded-lg p-4 overflow-x-auto text-xs font-mono my-3;
+  @apply bg-[#1E1E1E] text-[#E4E4E4] rounded-lg p-4 overflow-x-auto text-sm font-mono my-3;
 }
 .prose code:not(pre code) {
-  @apply bg-cream-100 text-clay-600 px-1.5 py-0.5 rounded text-[0.85em] font-mono;
+  @apply bg-cream-100 text-clay-600 px-1.5 py-0.5 rounded text-[0.9em] font-mono;
 }
 .prose p { @apply my-2.5 leading-relaxed; }
 .prose ul { @apply my-2.5 pl-5 list-disc space-y-1; }
 .prose ol { @apply my-2.5 pl-5 list-decimal space-y-1; }
 .prose h1, .prose h2, .prose h3 { @apply font-serif font-semibold text-ink-900 mt-4 mb-2; }
-.prose h1 { @apply text-xl; }
-.prose h2 { @apply text-lg; }
-.prose h3 { @apply text-base; }
+.prose h1 { @apply text-2xl; }
+.prose h2 { @apply text-xl; }
+.prose h3 { @apply text-lg; }
 .prose blockquote {
   @apply border-l-2 border-clay-400 pl-3 text-ink-500 italic my-3;
 }
 .prose table {
-  @apply w-full text-xs border border-cream-300 my-3;
+  @apply w-full text-sm border border-cream-300 my-3;
 }
 .prose th, .prose td {
   @apply border border-cream-300 px-2 py-1 text-left;
