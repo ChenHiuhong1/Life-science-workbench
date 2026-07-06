@@ -31,6 +31,9 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     language: str = "en"
     project_path: str = ""
+    # Per-message override of the thinking tier (none / high / max). Empty
+    # means "use the global setting from .env".
+    reasoning_effort: str = ""
 
 
 @router.post("/stream")
@@ -47,6 +50,17 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
     agent = registry.get(agent_key) or registry.get("chat")
     system_prompt = registry.build_system_prompt(agent.key)
     system_prompt += "\n\n" + _language_instruction(req.language)
+
+    # Inject AGENTS.md long-term memory. project_path is resolved below, but
+    # memory must be ready before the system prompt is used; resolve it the
+    # same way here (request value, else the bound project folder).
+    from ..core.memory import memory_block_for_prompt
+    mem_path = req.project_path or ""
+    if not mem_path and session and session.project_id:
+        project = db.query(Project).get(session.project_id)
+        if project and project.local_path:
+            mem_path = project.local_path
+    system_prompt += memory_block_for_prompt(mem_path)
 
     # Resolve the active workspace folder: prefer the request value, then fall back
     # to the project bound to this session so the executor/file operations follow
@@ -77,6 +91,15 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
 
     async def generate():
         assistant_buf = {"content": "", "tool_calls": [], "artifact_ids": []}
+        # Emit a meta event with the (possibly just-updated) session title so
+        # the frontend can refresh the sidebar entry live, instead of the user
+        # seeing "New Session" until they reload the project.
+        try:
+            refreshed = db.query(SessionModel).get(req.session_id)
+            if refreshed:
+                yield f'data: {json.dumps({"type": "meta", "session_id": req.session_id, "title": refreshed.title})}\n\n'
+        except Exception:
+            pass
         try:
             async for event in stream_chat(
                 messages=messages,
@@ -84,6 +107,8 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
                 system_prompt=system_prompt,
                 session_id=req.session_id,
                 project_path=project_path,
+                effort_override=req.reasoning_effort or "",
+                agent_key=agent.key,
             ):
                 if await request.is_disconnected():
                     logger.info(f"client disconnected; stopping stream for session {req.session_id}")
@@ -98,22 +123,41 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
                 yield event
         except asyncio.CancelledError:
             logger.info(f"stream response cancelled for session {req.session_id}")
+            _persist_assistant(req.session_id, assistant_buf["content"])
             raise
         except Exception as exc:
             logger.exception("chat stream failed")
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
 
-        try:
-            db.add(Message(
-                session_id=req.session_id,
-                role="assistant",
-                content=assistant_buf["content"],
-            ))
-            db.commit()
-        except Exception:
-            db.rollback()
+        # Persist with a fresh session rather than the request-scoped one. The
+        # request-scoped SessionLocal is shared across many await points during
+        # streaming and SQLAlchemy Sessions are not concurrency-safe; using a
+        # dedicated session here keeps the post-stream write isolated and lets
+        # it succeed even if FastAPI is tearing the request down.
+        _persist_assistant(req.session_id, assistant_buf["content"])
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _persist_assistant(session_id: str, content: str) -> None:
+    """Persist the assistant turn in its own DB session, swallow failures.
+
+    A short/duplicate final newline or empty content is still persisted so the
+    conversation history stays coherent (an assistant turn was emitted), but
+    any DB error is contained: it never propagates into the (already-finishing)
+    stream and corrupt an unrelated session.
+    """
+    from ..db.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.add(Message(session_id=session_id, role="assistant", content=content or ""))
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(f"failed to persist assistant message for session {session_id}")
+    finally:
+        db.close()
 
 
 def _language_instruction(language: str) -> str:

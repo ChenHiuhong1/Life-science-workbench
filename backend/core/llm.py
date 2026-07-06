@@ -15,16 +15,38 @@ loops are wrapped so a mid-stream failure is reported as a clean, *session
 bound* SSE error instead of leaking a raw traceback across the connection.
 """
 import json
+import re
 from typing import Any, AsyncIterator, Dict, List
 
 from loguru import logger
 
 from ..config import reload_settings, settings
 
-MAX_TOOL_ROUNDS = 6
+# How many tool-call rounds a single chat turn may use. The previous value (6)
+# was too small for realistic multi-step analyses (a single-cell workflow alone
+# is QC→HVG→PCA→neighbors→leiden→UMAP→DEG→markers→annotation→figures = 10+
+# steps), so a single mid-pipeline error would exhaust the budget and force a
+# final summary, truncating every later step. 14 fits a full analysis with room
+# for one or two retries; analysis agents (bio/protocol) get even more via
+# :func:`max_tool_rounds_for`.
+MAX_TOOL_ROUNDS = 14
+# Higher budget for agents whose job is long multi-step analysis pipelines.
+HEAVY_AGENT_TOOL_ROUNDS = 24
+HEAVY_AGENT_KEYS = {"bio", "protocol", "brainstorm", "module"}
+
+
+def max_tool_rounds_for(agent_key: str = "") -> int:
+    """Per-agent tool-round budget. Heavy analysis agents get more headroom."""
+    return HEAVY_AGENT_TOOL_ROUNDS if (agent_key or "") in HEAVY_AGENT_KEYS else MAX_TOOL_ROUNDS
+# Soft output caps. The per-model real max (e.g. GLM-5.2 = 65536) is resolved
+# via model_specs at call time; these are only the fallback for unknown models.
 CHAT_MAX_TOKENS = 4096
 FINAL_SUMMARY_MAX_TOKENS = 2048
 MODEL_TOOL_RESULT_CHAR_LIMIT = 6000
+# Cap on tool results shipped to the UI over SSE and persisted as part of an
+# artifact. The model gets a smaller (compacted) copy via the function below;
+# this cap protects the wire + DB from a runaway 500MB-print run.
+SSE_TOOL_RESULT_CHAR_LIMIT = 30_000
 COMPACT_RESPONSE_INSTRUCTION = (
     "Token budget: concise. Prefer the shortest complete answer, do not echo full tool logs, "
     "and summarize tool evidence by outcome, key numbers, failures, and artifact paths."
@@ -54,9 +76,26 @@ def _as_text(value: Any) -> str:
 
 
 def _is_anthropic() -> bool:
+    """Return whether the configured endpoint speaks the Anthropic protocol.
+
+    The result is memoised keyed on the *current* base URL string, so a normal
+    chat request no longer re-parses ``.env`` from disk on every call. The cache
+    is invalidated implicitly whenever the base URL changes (settings save),
+    because the key differs.
+    """
+    base_url = (settings.llm_base_url or "").lower()
+    cached = _ANTHROPIC_CACHE.get(base_url)
+    if cached is not None:
+        return cached
     reload_settings()
     base_url = (settings.llm_base_url or "").lower()
-    return "/anthropic" in base_url or "anthropic.com" in base_url
+    result = "/anthropic" in base_url or "anthropic.com" in base_url
+    _ANTHROPIC_CACHE.clear()
+    _ANTHROPIC_CACHE[base_url] = result
+    return result
+
+
+_ANTHROPIC_CACHE: Dict[str, bool] = {}
 
 
 async def stream_chat(
@@ -66,12 +105,15 @@ async def stream_chat(
     model: str | None = None,
     session_id: str = "default",
     project_path: str = "",
+    effort_override: str = "",
+    agent_key: str = "",
 ) -> AsyncIterator[str]:
+    max_rounds = max_tool_rounds_for(agent_key)
     if _is_anthropic():
-        async for event in _stream_anthropic(messages, tools, system_prompt, model, session_id, project_path):
+        async for event in _stream_anthropic(messages, tools, system_prompt, model, session_id, project_path, effort_override, max_rounds):
             yield event
     else:
-        async for event in _stream_openai(messages, tools, system_prompt, model, session_id, project_path):
+        async for event in _stream_openai(messages, tools, system_prompt, model, session_id, project_path, effort_override, max_rounds):
             yield event
 
 
@@ -90,16 +132,28 @@ def _error_event(message: str, session_id: str) -> str:
     return _sse({"type": "error", "message": message, "session_id": session_id})
 
 
-def _with_reasoning_instruction(system_prompt: str) -> str:
+def _with_reasoning_instruction(system_prompt: str, effort_override: str = "") -> str:
     base = _as_text(system_prompt)
-    effort = _as_text(getattr(settings, "reasoning_effort", "") or "auto").lower()
+    effort = _as_text(effort_override or getattr(settings, "reasoning_effort", "") or "max").lower()
+    # Zhipu GLM exposes three thinking tiers: none / high / max. We mirror them
+    # here as system-prompt guidance. "auto" and the legacy "low"/"medium"
+    # values are normalised to a sensible tier so old saved settings still work.
     instructions = {
-        "low": "Reasoning effort: low. Prefer fast, direct answers and expand reasoning only when necessary.",
-        "medium": "Reasoning effort: medium. Check the key assumptions, then give a clear answer with evidence.",
+        "none": "Reasoning effort: none. Do not use extended thinking. Answer directly and quickly.",
         "high": (
-            "Reasoning effort: high. For complex tasks, decompose the problem, check boundaries, and self-review "
-            "before answering. Do not expose long hidden reasoning; summarize the useful rationale."
+            "Reasoning effort: high. For non-trivial tasks, check the key assumptions and self-review "
+            "the answer before sending. Do not expose long hidden reasoning; summarize the useful rationale."
         ),
+        "max": (
+            "Reasoning effort: max (highest). For any task that is not a trivial factual reply, fully "
+            "decompose the problem, check boundaries and edge cases, verify each tool result, and "
+            "self-review the final answer for correctness and completeness before sending. Do not expose "
+            "long hidden reasoning; summarize the useful rationale."
+        ),
+        # Legacy normalisation (kept so old .env values don't break):
+        "auto": "Reasoning effort: max (highest). Fully decompose, verify, and self-review before answering.",
+        "low": "Reasoning effort: none. Do not use extended thinking. Answer directly and quickly.",
+        "medium": "Reasoning effort: high. Check key assumptions, then give a clear answer with evidence.",
     }
     extras = [COMPACT_RESPONSE_INSTRUCTION]
     if instructions.get(effort):
@@ -122,6 +176,204 @@ def _compact_tool_result_for_model(result: str) -> str:
     )
 
 
+# --- Auto context compaction ----------------------------------------------
+# When the conversation approaches the model's context window, summarise the
+# oldest turns into one assistant message so the chat keeps working without a
+# hard truncation that would silently drop the user's earlier requests.
+
+_COMPACT_CHARS_PER_TOKEN = 4
+_COMPACT_TRIGGER_RATIO = 0.70  # compact when used >= 70% of the window
+_COMPACT_KEEP_RECENT_TURNS = 8  # always keep the most recent N messages verbatim
+
+
+def _estimate_history_tokens(messages: List[Dict[str, Any]]) -> int:
+    """Rough token estimate for a message list (~4 chars/token, min 4/msg)."""
+    total = 0
+    for message in messages or []:
+        content = message.get("content")
+        if isinstance(content, str):
+            total += max(4, len(content) // _COMPACT_CHARS_PER_TOKEN)
+        elif isinstance(content, list):
+            # anthropic-style content blocks
+            for block in content:
+                if isinstance(block, dict):
+                    total += max(4, len(_as_text(block.get("text") or block.get("content"))) // _COMPACT_CHARS_PER_TOKEN)
+        total += 4  # role/structural overhead per message
+    return total
+
+
+async def _summarise_for_compact(messages: List[Dict[str, Any]], model: str) -> str:
+    """Ask the model for a tight summary of the given older messages.
+
+    Returns the summary text, or "" if the call fails (we then fall back to a
+    mechanical truncation rather than block the conversation).
+    """
+    if not messages:
+        return ""
+    # Build a compact transcript to summarise.
+    lines = []
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                _as_text(b.get("text") if isinstance(b, dict) else b) for b in content
+            )
+        text = _as_text(content).strip()
+        if not text:
+            continue
+        lines.append(f"[{role}] {text[:1500]}")
+    transcript = "\n".join(lines)[:12000]
+    if not transcript:
+        return ""
+
+    summary_prompt = (
+        "Summarise the earlier part of this conversation as a compact brief the model can keep in mind. "
+        "Capture: the user's goal and key constraints, decisions made, what was tried and the outcome, "
+        "any artifact paths produced, and the next step. Keep it under 400 words. Do not add commentary.\n\n"
+        f"=== EARLIER CONVERSATION ===\n{transcript}\n=== END ==="
+    )
+
+    try:
+        if _is_anthropic():
+            import anthropic
+            client = anthropic.AsyncAnthropic(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+            resp = await client.messages.create(
+                model=model,
+                max_tokens=1200,
+                messages=[{"role": "user", "content": summary_prompt}],
+            )
+            parts = getattr(resp, "content", []) or []
+            return " ".join(_as_text(getattr(p, "text", None)) for p in parts if getattr(p, "type", "") == "text")
+        else:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+            resp = await client.chat.completions.create(
+                model=model,
+                max_tokens=1200,
+                messages=[{"role": "user", "content": summary_prompt}],
+            )
+            return _as_text(resp.choices[0].message.content)
+    except Exception as exc:
+        logger.warning(f"[compact] summary call failed ({exc}); falling back to truncation")
+        return ""
+
+
+async def _maybe_compact_history(
+    messages: List[Dict[str, Any]],
+    model: str,
+    system_prompt: str = "",
+) -> tuple[List[Dict[str, Any]], bool]:
+    """Auto-compact a message list when it nears the model's context window.
+
+    Returns ``(maybe_compacted_messages, did_compact)``. The most recent
+    ``_COMPACT_KEEP_RECENT_TURNS`` messages are always kept verbatim; the older
+    prefix is replaced by a single summary message. When there is nothing to
+    compact (short history, tiny window, or summary failure) the input is
+    returned unchanged.
+    """
+    from .model_specs import context_window_for
+
+    window = context_window_for(model)
+    # Reserve room for the system prompt + the upcoming response.
+    reserved = (len(system_prompt) // _COMPACT_CHARS_PER_TOKEN) + 2048
+    budget = max(2048, window - reserved)
+    used = _estimate_history_tokens(messages)
+    if used < budget * _COMPACT_TRIGGER_RATIO:
+        return messages, False
+    if len(messages) <= _COMPACT_KEEP_RECENT_TURNS + 2:
+        return messages, False
+
+    older = messages[: -_COMPACT_KEEP_RECENT_TURNS]
+    recent = messages[-_COMPACT_KEEP_RECENT_TURNS:]
+
+    summary = await _summarise_for_compact(older, model)
+    if not summary:
+        # Mechanical fallback: keep the first user message (the task) + recent.
+        first_user = next((m for m in older if m.get("role") == "user"), None)
+        kept_head = [first_user] if first_user else []
+        return kept_head + recent, bool(first_user)
+
+    summary_message = {
+        "role": "assistant",
+        "content": (
+            "[Auto-compacted summary of earlier turns — treat as context, not as your own prior answer.]\n"
+            f"{summary}"
+        ),
+    }
+    logger.info(f"[compact] compressed {len(older)} older messages into a summary ({used} -> ~{budget} token budget)")
+    return [summary_message] + recent, True
+
+
+def _truncate_for_ui(result: str) -> tuple[str, bool]:
+    """Cap a tool result before it is shipped to the UI / persisted to DB.
+
+    Returns ``(text, truncated)``. The head is preserved (it carries the
+    success/failure line and the first rows of output); the tail is appended so
+    a reviewer can still see the final error or summary line.
+    """
+    text = _as_text(result)
+    if len(text) <= SSE_TOOL_RESULT_CHAR_LIMIT:
+        return text, False
+    head = text[: SSE_TOOL_RESULT_CHAR_LIMIT // 2]
+    tail = text[-SSE_TOOL_RESULT_CHAR_LIMIT // 2 :]
+    omitted = len(text) - SSE_TOOL_RESULT_CHAR_LIMIT
+    return (
+        f"{head}\n\n[... output truncated for display: {omitted} characters omitted; "
+        f"full output is in the saved script's working directory ...]\n\n{tail}",
+        True,
+    )
+
+
+def _extra_model_kwargs(model: str, effort_override: str = "", protocol: str = "openai") -> dict:
+    """Build model-specific request kwargs (reasoning_effort / thinking).
+
+    Returns only the parameters the target model actually accepts, so unknown
+    OpenAI/Anthropic-compatible endpoints never receive a field they would
+    reject. The per-message ``effort_override`` wins over the global default.
+
+    ``protocol`` selects the right field name for the wire:
+    - ``"openai"`` -> ``reasoning_effort`` (GLM-5.2 on the v4 endpoint).
+    - ``"anthropic"`` -> ``thinking={"type": "enabled"|"disabled"}`` (the form
+      both Claude and Zhipu's Anthropic-compatible endpoint accept).
+    """
+    from .model_specs import get_model_spec
+
+    spec = get_model_spec(model)
+    kwargs: Dict[str, Any] = {}
+    if not spec.supports_reasoning_effort:
+        return kwargs
+
+    effort = (effort_override or spec.default_reasoning_effort or "max").lower()
+    # Normalise legacy values into the GLM tiers so old .env keeps working.
+    if effort in {"auto", "max"}:
+        effort = "max"
+    elif effort in {"low", "medium", "none"}:
+        effort = "none" if effort in {"low", "none"} else "high"
+    # else: keep "high"
+
+    if protocol == "anthropic":
+        # Anthropic/GLM anthropic endpoint: extended thinking on/off. "none"
+        # disables it; any other tier enables it.
+        if effort == "none":
+            kwargs["thinking"] = {"type": "disabled"}
+        else:
+            kwargs["thinking"] = {"type": "enabled"}
+    else:
+        kwargs["reasoning_effort"] = effort
+    return kwargs
+
+
+def _max_tokens_for(model: str) -> int:
+    """Per-model output cap, falling back to CHAT_MAX_TOKENS for unknown models."""
+    from .model_specs import get_model_spec
+
+    spec = get_model_spec(model)
+    # Use the model's real cap but keep a sane ceiling for chat turns so one
+    # answer can't monopolise the whole output budget.
+    return min(spec.max_output_tokens, 16_384) or CHAT_MAX_TOKENS
+
+
 async def _stream_openai(
     messages: List[Dict[str, Any]],
     tools: List[Dict] | None,
@@ -129,6 +381,8 @@ async def _stream_openai(
     model: str | None,
     session_id: str = "default",
     project_path: str = "",
+    effort_override: str = "",
+    max_rounds: int = MAX_TOOL_ROUNDS,
 ) -> AsyncIterator[str]:
     from openai import AsyncOpenAI
 
@@ -139,15 +393,19 @@ async def _stream_openai(
     client = AsyncOpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
 
     full_messages: List[Dict[str, Any]] = []
-    system_prompt = _with_reasoning_instruction(system_prompt)
+    system_prompt = _with_reasoning_instruction(system_prompt, effort_override)
     if system_prompt:
         full_messages.append({"role": "system", "content": system_prompt})
-    full_messages.extend(_sanitize_messages(messages))
 
     model = model or settings.llm_model
 
+    # Auto-compact long histories before they blow the model's context window.
+    sanitized = _sanitize_messages(messages)
+    sanitized, _ = await _maybe_compact_history(sanitized, model, system_prompt=system_prompt)
+    full_messages.extend(sanitized)
+
     force_final_summary = False
-    for round_idx in range(MAX_TOOL_ROUNDS):
+    for round_idx in range(max_rounds):
         content_buf = ""
         tool_calls_buf: Dict[int, dict] = {}
 
@@ -155,14 +413,16 @@ async def _stream_openai(
         # compatible endpoints raise or emit None mid-stream, and either must
         # become a clean session-bound error rather than a dropped connection.
         try:
-            stream = await client.chat.completions.create(
+            create_kwargs = dict(
                 model=model,
                 messages=full_messages,
                 tools=tools or None,
                 tool_choice="auto" if tools else None,
-                max_tokens=CHAT_MAX_TOKENS,
+                max_tokens=_max_tokens_for(model),
                 stream=True,
             )
+            create_kwargs.update(_extra_model_kwargs(model, effort_override))
+            stream = await client.chat.completions.create(**create_kwargs)
 
             async for chunk in stream:
                 if not getattr(chunk, "choices", None):
@@ -184,6 +444,22 @@ async def _stream_openai(
                         if fn and getattr(fn, "arguments", None) is not None:
                             slot["args"] += _as_text(fn.arguments)
         except Exception as exc:
+            # Auto-fallback when a long-context tier (e.g. glm-5.2[1m]) is not
+            # available on the user's plan: retry once with the base model id.
+            msg = str(exc)
+            base_model = re.sub(r"\s*\[[0-9]+[mk]\]\s*$", "", model or "", flags=re.IGNORECASE)
+            is_model_missing = (
+                ("1211" in msg or "model" in msg.lower() and "not exist" in msg.lower() or "模型不存在" in msg)
+                and base_model and base_model != model and round_idx == 0
+            )
+            if is_model_missing:
+                logger.warning(f"[openai] model '{model}' unavailable; retrying with base '{base_model}'")
+                yield _sse({
+                    "type": "delta",
+                    "content": f"\n\n_Model `{model}` is not available on your plan; retrying with `{base_model}`._\n\n",
+                })
+                model = base_model
+                continue
             logger.exception("OpenAI-compatible call failed")
             yield _error_event(f"LLM call failed: {exc}", session_id)
             return
@@ -204,13 +480,14 @@ async def _stream_openai(
                 yield _sse({"type": "tool_call", "name": item["name"], "args": _safe_json(item["args"])})
                 result = await execute_tool_call(item["name"], item["args"], session_id=session_id, project_path=project_path)
                 result = _as_text(result)
-                yield _sse({"type": "tool_result", "name": item["name"], "result": result})
+                ui_result, truncated = _truncate_for_ui(result)
+                yield _sse({"type": "tool_result", "name": item["name"], "result": ui_result, "truncated": truncated})
                 full_messages.append({
                     "role": "tool",
                     "tool_call_id": call["id"],
                     "content": _compact_tool_result_for_model(result),
                 })
-            if round_idx == MAX_TOOL_ROUNDS - 1:
+            if round_idx == max_rounds - 1:
                 force_final_summary = True
                 break
             continue
@@ -281,6 +558,8 @@ async def _stream_anthropic(
     model: str | None,
     session_id: str = "default",
     project_path: str = "",
+    effort_override: str = "",
+    max_rounds: int = MAX_TOOL_ROUNDS,
 ) -> AsyncIterator[str]:
     import anthropic
 
@@ -293,22 +572,29 @@ async def _stream_anthropic(
         api_key=settings.llm_api_key,
     )
     model = model or settings.llm_model
-    system_prompt = _with_reasoning_instruction(system_prompt)
-    api_messages = [message for message in _sanitize_messages(messages) if message["role"] != "system"]
+    system_prompt = _with_reasoning_instruction(system_prompt, effort_override)
+    raw_messages = [message for message in _sanitize_messages(messages) if message["role"] != "system"]
+    # Auto-compact long histories before they blow the model's context window.
+    raw_messages, _ = await _maybe_compact_history(raw_messages, model, system_prompt=system_prompt)
+    api_messages = raw_messages
     anthropic_tools = _convert_tools_to_anthropic(tools) if tools else None
 
     force_final_summary = False
-    for round_idx in range(MAX_TOOL_ROUNDS):
+    for round_idx in range(max_rounds):
         try:
             kwargs: Dict[str, Any] = {
                 "model": model,
                 "messages": api_messages,
-                "max_tokens": CHAT_MAX_TOKENS,
+                "max_tokens": _max_tokens_for(model),
             }
             if system_prompt:
                 kwargs["system"] = system_prompt[:50000]
             if anthropic_tools:
                 kwargs["tools"] = anthropic_tools
+            # GLM-5.2 (and Claude-compatible) accepts reasoning_effort +
+            # thinking params; only send them when the model supports it so
+            # other Anthropic-compatible endpoints don't 400.
+            kwargs.update(_extra_model_kwargs(model, effort_override, protocol="anthropic"))
 
             async with client.messages.stream(**kwargs) as stream:
                 content_buf = ""
@@ -367,14 +653,15 @@ async def _stream_anthropic(
                     result = _as_text(await execute_tool_call(
                         tool_call["name"], tool_call["input"], session_id=session_id, project_path=project_path
                     ))
-                    yield _sse({"type": "tool_result", "name": tool_call["name"], "result": result})
+                    ui_result, truncated = _truncate_for_ui(result)
+                    yield _sse({"type": "tool_result", "name": tool_call["name"], "result": ui_result, "truncated": truncated})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_call["id"],
                         "content": _compact_tool_result_for_model(result),
                     })
                 api_messages.append({"role": "user", "content": tool_results})
-                if round_idx == MAX_TOOL_ROUNDS - 1:
+                if round_idx == max_rounds - 1:
                     force_final_summary = True
                     break
                 continue
@@ -382,8 +669,32 @@ async def _stream_anthropic(
             break
 
         except anthropic.APIStatusError as exc:
+            # Auto-fallback when a long-context tier (e.g. glm-5.2[1m]) is not
+            # available on the user's plan: retry once with the base model id.
+            # Error code 1211 = Zhipu "model does not exist".
+            status = getattr(exc, "status_code", 0)
+            body = getattr(exc, "body", None) or {}
+            err_msg = ""
+            if isinstance(body, dict):
+                inner = body.get("error") or {}
+                err_msg = _as_text(inner.get("message") if isinstance(inner, dict) else inner)
+            err_code = ""
+            if isinstance(body, dict) and isinstance(body.get("error"), dict):
+                err_code = _as_text(body["error"].get("code"))
+            is_model_missing = status == 400 and ("1211" in err_code or "model" in err_msg.lower() or "模型不存在" in err_msg)
+            base_model = re.sub(r"\s*\[[0-9]+[mk]\]\s*$", "", model or "", flags=re.IGNORECASE)
+            if is_model_missing and base_model and base_model != model and round_idx == 0:
+                logger.warning(
+                    f"[anthropic] model '{model}' unavailable (code {err_code}); retrying with base '{base_model}'"
+                )
+                yield _sse({
+                    "type": "delta",
+                    "content": f"\n\n_Model `{model}` is not available on your plan; retrying with `{base_model}`._\n\n",
+                })
+                model = base_model
+                continue
             logger.exception("Anthropic API error")
-            yield _error_event(f"Anthropic API error {exc.status_code}: {exc.message}", session_id)
+            yield _error_event(f"Anthropic API error {status}: {exc.message}", session_id)
             return
         except Exception as exc:
             logger.exception("Anthropic call failed")

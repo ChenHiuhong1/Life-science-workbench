@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://open.bigmodel.cn/api/paas/v4/"
     llm_api_key: str = ""
     llm_model: str = "glm-4-plus"
-    reasoning_effort: str = "auto"
+    reasoning_effort: str = "max"
 
     sandbox_timeout: int = 120
     sandbox_memory_mb: int = 4096
