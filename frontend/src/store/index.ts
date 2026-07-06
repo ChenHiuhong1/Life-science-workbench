@@ -3,6 +3,20 @@ import type { Project, SessionInfo, Message, Artifact, AgentKey } from '@/types'
 import { api } from '@/api/client';
 
 const pendingSessionCreates: Partial<Record<string, Promise<string | null>>> = {};
+const SUPPORTED_AGENT_KEYS: AgentKey[] = [
+  'chat',
+  'brainstorm',
+  'bio',
+  'protocol',
+  'reviewer',
+  'module',
+  'document',
+  'hpc',
+];
+
+function normalizeAgentKey(mode?: string | null): AgentKey {
+  return SUPPORTED_AGENT_KEYS.includes(mode as AgentKey) ? (mode as AgentKey) : 'chat';
+}
 
 // ---------------------------------------------------------------------------
 // Streaming delta coalescing
@@ -70,6 +84,7 @@ interface AppState {
   setAgent: (agent: AgentKey) => Promise<void>;
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
+  addMessageToSession: (sessionId: string, message: Message) => void;
   appendToLast: (delta: string) => void;
   appendToMessage: (streamSid: string, msgId: number, delta: string) => void;
   _flushAppend: (streamSid: string, msgId: number, delta: string) => void;
@@ -125,7 +140,7 @@ export const useStore = create<AppState>((set, get) => ({
     // sessions come back ordered by updated_at desc, so the first per-mode
     // entry is the most recently touched session of that module.
     for (const session of sessions) {
-      const key = `${id}:${session.mode}`;
+      const key = `${id}:${normalizeAgentKey(session.mode)}`;
       if (!map[key]) map[key] = session.id;
     }
     set({ agentSessionMap: map });
@@ -220,13 +235,13 @@ export const useStore = create<AppState>((set, get) => ({
       message.id !== -1 && !legacyWelcomeSnippets.some((snippet) => (message.content || '').includes(snippet))
     );
     const session = get().sessions.find((item) => item.id === id);
-    const newAgent = (session?.mode as AgentKey) || get().agent;
+    const newAgent = normalizeAgentKey(session?.mode);
     const pid = get().currentProjectId;
     // Keep agent + "last active" map in sync with what the user is actually
     // viewing, so presets and the chat input reflect the selected session's
     // module rather than the previously-active one.
     const mapUpdate = pid && session
-      ? { ...get().agentSessionMap, [`${pid}:${session.mode}`]: id }
+      ? { ...get().agentSessionMap, [`${pid}:${newAgent}`]: id }
       : get().agentSessionMap;
     set({
       currentSessionId: id,
@@ -252,7 +267,7 @@ export const useStore = create<AppState>((set, get) => ({
     // when the user is mid-conversation in another module that shares it.
     const cur = get().currentSessionId;
     const curSession = cur ? get().sessions.find((s) => s.id === cur) : null;
-    if (curSession && curSession.mode === agent) {
+    if (curSession && normalizeAgentKey(curSession.mode) === agent) {
       // Make this the "last active" session for the module so re-entering it
       // (after visiting another module) returns here.
       const mapKey = `${pid}:${agent}`;
@@ -307,6 +322,18 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       messages,
       messagesBySession: sid ? { ...get().messagesBySession, [sid]: messages } : get().messagesBySession,
+    });
+  },
+
+  addMessageToSession: (sessionId, message) => {
+    const cur = get().currentSessionId;
+    const targetMessages = sessionId === cur
+      ? get().messages
+      : (get().messagesBySession[sessionId] || []);
+    const messages = [...targetMessages, message];
+    set({
+      messages: sessionId === cur ? messages : get().messages,
+      messagesBySession: { ...get().messagesBySession, [sessionId]: messages },
     });
   },
 

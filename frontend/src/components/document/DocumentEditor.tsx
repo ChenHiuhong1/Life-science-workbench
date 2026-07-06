@@ -173,7 +173,7 @@ export function DocumentEditor() {
   // the last edit. Re-runs are skipped while a review is in flight or when the
   // document has not changed enough since the last review. A visible countdown
   // tells the user a live review is pending, which makes the feature
-  // discoverable (the original symptom was "no real-time review" — it was
+  // discoverable (the original symptom was "no real-time review"; it was
   // actually running but invisibly and only after 30s).
   useEffect(() => {
     if (!autoReview || !text.trim() || reviewing) {
@@ -279,9 +279,9 @@ export function DocumentEditor() {
 
   if (!currentProjectId) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-cream-50">
+      <div className="flex-1 flex items-center justify-center bg-cream-50/70">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-cream-100 flex items-center justify-center mx-auto mb-4">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-cream-300 bg-white shadow-subtle">
             <FileText size={24} className="text-clay-500" strokeWidth={1.5} />
           </div>
           <p className="text-sm text-ink-500">{t('nav.no_project')}</p>
@@ -292,19 +292,19 @@ export function DocumentEditor() {
   }
 
   return (
-    <section className="flex-1 flex overflow-hidden bg-cream-50">
+    <section className="flex-1 flex overflow-hidden bg-cream-50/70">
       {/* Editor column */}
       <div className="flex-1 flex flex-col overflow-hidden border-r border-cream-300">
-        <div className="shrink-0 h-10 border-b border-cream-300 bg-white flex items-center gap-2 px-3">
+        <div className="h-11 shrink-0 border-b border-cream-300 bg-cream-50/95 flex items-center gap-2 px-3">
           <FileText size={14} className="text-clay-500" />
           <input
-            className="flex-1 min-w-0 text-sm font-medium bg-transparent focus:outline-none truncate"
+            className="min-w-0 flex-1 truncate bg-transparent text-sm font-semibold text-ink-900 focus:outline-none"
             value={title}
             onChange={(e) => persistTitle(e.target.value)}
             placeholder={t('doc.save_ph')}
           />
           <select
-            className="text-xs border border-cream-300 rounded-[6px] px-2 py-1 bg-white text-ink-700 focus:outline-none"
+            className="rounded-[8px] border border-cream-300 bg-white px-2 py-1 text-xs text-ink-700 focus:outline-none focus:ring-2 focus:ring-clay-400/20"
             value={docType}
             onChange={(e) => handleTypeChange(e.target.value as DocType)}
             title={t('doc.type')}
@@ -335,7 +335,7 @@ export function DocumentEditor() {
         {/* Stats + change-tracking bar. Always visible while editing so the user
             can see at a glance how much has been written and how much has
             drifted from the last review baseline. */}
-        <div className="shrink-0 flex items-center gap-3 px-3 py-1 border-b border-cream-200 bg-cream-50 text-[11px] text-ink-500">
+        <div className="shrink-0 flex items-center gap-3 border-b border-cream-300 bg-cream-100/60 px-3 py-1 text-[11px] text-ink-500">
           <span title="Lines"><strong className="text-ink-700">{stats.lines}</strong> lines</span>
           <span className="text-cream-300">·</span>
           <span title="Words"><strong className="text-ink-700">{stats.words}</strong> words</span>
@@ -349,10 +349,10 @@ export function DocumentEditor() {
             <span className="text-ink-300 ml-1">since baseline</span>
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <label className="flex items-center gap-1 cursor-pointer select-none text-ink-400 hover:text-ink-600" title="Live review: re-runs shortly after you stop editing">
+            <label className="flex cursor-pointer select-none items-center gap-1 text-ink-500 hover:text-ink-700" title="Live review: re-runs shortly after you stop editing">
               <input
                 type="checkbox"
-                className="accent-clay-500 h-3 w-3"
+                className="h-3 w-3 accent-clay-500"
                 checked={autoReview}
                 onChange={(e) => setAutoReview(e.target.checked)}
               />
@@ -371,7 +371,7 @@ export function DocumentEditor() {
               </span>
             )}
             <button
-              className="flex items-center gap-1 text-ink-400 hover:text-ink-700"
+              className="flex items-center gap-1 text-ink-500 hover:text-ink-900"
               onClick={() => setShowDiff((v) => !v)}
               title="Toggle diff view"
             >
@@ -379,7 +379,7 @@ export function DocumentEditor() {
               <span>{showDiff ? 'Hide diff' : 'Show diff'}</span>
             </button>
             <button
-              className="flex items-center gap-1 text-ink-400 hover:text-ink-700"
+              className="flex items-center gap-1 text-ink-500 hover:text-ink-900"
               onClick={resetBaseline}
               title="Set current text as the new baseline"
             >
@@ -396,12 +396,12 @@ export function DocumentEditor() {
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink-300 border-b border-cream-200">
+            <div className="border-b border-cream-300 bg-cream-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink-400">
               {t('doc.editor')}
             </div>
             <textarea
               ref={textareaRef}
-              className="flex-1 w-full resize-none bg-cream-50 text-sm text-ink-900 font-mono
+              className="flex-1 w-full resize-none bg-cream-50/70 text-sm text-ink-900 font-mono
                          focus:outline-none px-4 py-3 leading-relaxed"
               value={text}
               onChange={(e) => persistDraft(e.target.value)}
@@ -411,8 +411,8 @@ export function DocumentEditor() {
             {showDiff && diff && <DiffView diff={diff} />}
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden border-l border-cream-200 bg-white">
-            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink-300 border-b border-cream-200">
+          <div className="flex-1 flex flex-col overflow-hidden border-l border-cream-300 bg-white/80">
+            <div className="border-b border-cream-300 bg-cream-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink-400">
               {t('doc.preview')}
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -452,7 +452,7 @@ export function DocumentEditor() {
 
 function DiffView({ diff }: { diff: DiffLine[] }) {
   return (
-    <div className="shrink-0 max-h-56 overflow-y-auto border-t border-cream-300 bg-[#1E1E1E] text-[11px] font-mono">
+    <div className="max-h-56 shrink-0 overflow-y-auto border-t border-cream-300 bg-[#14241C] font-mono text-[11px]">
       {diff.map((line, idx) => {
         const cls = line.type === 'add'
           ? 'bg-[#1e3a2e] text-[#b9e6c4]'

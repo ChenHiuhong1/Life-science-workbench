@@ -124,9 +124,6 @@ def select_triggered_tools(keys: List[str], latest_user_text: str, agent_key: st
     selected: list[str] = []
 
     for key in keys:
-        if key == "search_literature" and agent_key == "literature":
-            selected.append(key)
-            continue
         if _tool_triggered(key, text, lowered):
             selected.append(key)
 
@@ -138,7 +135,8 @@ def select_triggered_tools(keys: List[str], latest_user_text: str, agent_key: st
     # Safety net: a *data-task* agent (bio / protocol) that triggered nothing
     # still gets its code tools, because those agents are essentially useless
     # without them and a keyword gap should not silently disable them. Chat and
-    # literature stay keyword-gated so conceptual questions stay bare.
+    # other conceptual agents stay keyword-gated so greetings and explanation
+    # prompts stay bare.
     if not chosen and agent_key in {"bio", "protocol"} and keys:
         return list(keys)
 

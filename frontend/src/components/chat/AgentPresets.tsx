@@ -3,11 +3,6 @@ import type { AgentKey } from '@/types';
 
 const PRESETS: Partial<Record<AgentKey, { label: string; inject: string }[]>> = {
   chat: [],
-  literature: [
-    { label: 'Review a field', inject: 'Search and summarize recent progress in this research field:' },
-    { label: 'Gene or protein', inject: 'Search the literature about this gene/protein:' },
-    { label: 'High-impact papers', inject: 'Search high-impact papers for this topic and sort by citation count:' },
-  ],
   brainstorm: [
     {
       label: 'Design from scratch',
@@ -91,8 +86,8 @@ export function AgentPresets({ onInject }: { onInject: (text: string) => void })
         <button
           key={p.label}
           onClick={() => onInject(p.inject)}
-          className="px-2 py-0.5 text-[11px] rounded-full border border-cream-300 text-ink-500
-                     hover:border-clay-400 hover:bg-clay-50 hover:text-clay-600 transition-colors"
+          className="rounded-full border border-cream-300 bg-white/60 px-2.5 py-1 text-[11px] font-medium text-ink-500
+                     transition-colors hover:border-clay-400 hover:bg-clay-50 hover:text-clay-600"
         >
           {p.label}
         </button>

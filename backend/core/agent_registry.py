@@ -21,6 +21,7 @@ class AgentDef:
 
 GLOBAL_CONSTRAINT_SKILLS = [
     "harness-core",
+    "agent-output-contracts",
     "self-awareness",
     "agent-isolation",
     "project-directory-governance",
@@ -43,21 +44,6 @@ AGENTS: List[AgentDef] = [
         ),
         constraint_groups=["agents"],
         tools=["run_python", "run_r", "search_literature"],
-    ),
-    AgentDef(
-        key="literature",
-        label_zh="Literature",
-        label_en="Literature",
-        icon="book",
-        base_prompt=(
-            "You are a literature search specialist. Use search_literature for PubMed, arXiv, "
-            "CrossRef, and Semantic Scholar queries. Do not invent papers, DOI values, journals, "
-            "authors, citation counts, or publication years. Results must come from tool output. "
-            "Prefer source-grounded summaries and make uncertainty explicit. Follow the response "
-            "language instruction injected by the chat route."
-        ),
-        constraint_groups=["agents", "nature"],
-        tools=["search_literature"],
     ),
     AgentDef(
         key="brainstorm",
@@ -93,6 +79,7 @@ AGENTS: List[AgentDef] = [
             "mind-map",
             "notebook-builder",
             "knowledge-graph-builder",
+            "critical-thinking-review",
         ],
         tools=["search_literature", "run_python"],
     ),
@@ -244,6 +231,7 @@ AGENTS: List[AgentDef] = [
             "- Follow the response language instruction injected by the chat route."
         ),
         constraint_groups=["agents", "nature", "protocols"],
+        constraint_skills=["critical-thinking-review"],
         tools=["run_python", "search_literature"],
     ),
 ]

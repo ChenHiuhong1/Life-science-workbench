@@ -56,8 +56,8 @@ export function HpcView() {
   };
 
   return (
-    <section className="flex-1 flex flex-col overflow-hidden bg-cream-50">
-      <div className="shrink-0 border-b border-cream-300 bg-white px-4 py-3">
+    <section className="flex-1 flex flex-col overflow-hidden bg-cream-50/70">
+      <div className="shrink-0 border-b border-cream-300 bg-cream-50/95 px-5 py-3.5">
         <div className="flex items-center gap-2 mb-2">
           <div className="flex-1" />
           <button className="btn-outline text-xs" onClick={() => setAdding(true)}>
@@ -71,10 +71,10 @@ export function HpcView() {
               <button
                 key={conn.id}
                 onClick={() => setActiveId(conn.id)}
-                className={`group flex items-center gap-1.5 px-2.5 py-1 rounded-full border cursor-pointer text-xs transition-colors
+                className={`group flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
                   ${activeId === conn.id
                     ? 'border-clay-400 bg-clay-50 text-clay-600'
-                    : 'border-cream-300 text-ink-500 hover:bg-cream-100'}`}
+                    : 'border-cream-300 bg-white/60 text-ink-500 hover:bg-cream-100'}`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-ok" />
                 <span>{conn.name}</span>
@@ -113,7 +113,7 @@ export function HpcView() {
             <Loader2 size={20} className="animate-spin text-ink-300" />
           ) : (
             <>
-              <Server size={40} className="text-cream-400" strokeWidth={1} />
+              <Server size={40} className="text-cream-400" strokeWidth={1.2} />
               <p className="text-sm text-ink-400">Add a connection to configure your HPC server.</p>
               <p className="text-xs text-ink-300">Host, port, username, and password are enough for password SSH.</p>
             </>
@@ -141,7 +141,7 @@ function HpcBody({ conn, tab, setTab }: { conn: HpcConn; tab: Tab; setTab: (tab:
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-cream-300 bg-cream-50 px-4 flex items-center gap-1">
+      <div className="shrink-0 border-b border-cream-300 bg-cream-100/60 px-4 flex items-center gap-1">
         {tabs.map((item) => {
           const Icon = item.icon;
           return (
@@ -149,7 +149,7 @@ function HpcBody({ conn, tab, setTab }: { conn: HpcConn; tab: Tab; setTab: (tab:
               key={item.key}
               onClick={() => setTab(item.key)}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs border-b-2 transition-colors
-                ${tab === item.key ? 'border-clay-500 text-clay-600' : 'border-transparent text-ink-400 hover:text-ink-700'}`}
+                ${tab === item.key ? 'border-clay-500 text-clay-600' : 'border-transparent text-ink-500 hover:text-ink-900'}`}
             >
               <Icon size={13} /> {item.label}
             </button>
@@ -193,16 +193,16 @@ function TerminalPane({ conn }: { conn: HpcConn }) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#1A1A1A]">
+    <div className="h-full flex flex-col bg-[#14241C]">
       <div className="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed">
         <div className="text-ink-300 mb-2">
           <span className="text-ok">online</span> {conn.username}@{conn.host}:{conn.port}
-          {conn.work_dir && <span className="text-ink-500"> - {conn.work_dir}</span>}
+          {conn.work_dir && <span className="text-[#BCA98F]"> - {conn.work_dir}</span>}
         </div>
         {history.map((item, index) => (
           <div key={index} className="mb-2">
-            <div className="text-clay-400">$ {item.cmd}</div>
-            {item.out && <pre className="text-[#D4D4D4] whitespace-pre-wrap">{item.out}</pre>}
+            <div className="text-clay-300">$ {item.cmd}</div>
+            {item.out && <pre className="whitespace-pre-wrap text-[#F5F0E6]">{item.out}</pre>}
             {item.err && <pre className="text-[#F48771] whitespace-pre-wrap">{item.err}</pre>}
             {item.code !== 0 && item.code !== -1 && (
               <div className="text-[#F48771]">[exit {item.code}]</div>
@@ -211,17 +211,17 @@ function TerminalPane({ conn }: { conn: HpcConn }) {
         ))}
         {running && <div className="text-ink-400">Running...</div>}
       </div>
-      <div className="shrink-0 border-t border-[#333] p-2 flex items-center gap-2">
-        <span className="text-clay-400 font-mono text-xs px-1">$</span>
+      <div className="shrink-0 border-t border-[#3B2D23] p-2 flex items-center gap-2">
+        <span className="px-1 font-mono text-xs text-clay-300">$</span>
         <input
-          className="flex-1 bg-transparent text-[#D4D4D4] font-mono text-xs focus:outline-none"
+          className="flex-1 bg-transparent font-mono text-xs text-[#F5F0E6] placeholder:text-[#8AA092] focus:outline-none"
           placeholder="Type a command, for example: ls -lh, squeue --me, module load python"
           value={cmd}
           onChange={(e) => setCmd(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && run()}
           disabled={running}
         />
-        <button onClick={run} disabled={!cmd.trim() || running} className="text-ink-400 hover:text-clay-400" title="Run command">
+        <button onClick={run} disabled={!cmd.trim() || running} className="text-[#BCA98F] hover:text-clay-300 disabled:opacity-40" title="Run command">
           <Send size={13} />
         </button>
       </div>
@@ -291,14 +291,14 @@ function FilesPane({ conn }: { conn: HpcConn }) {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4 bg-cream-50">
+    <div className="h-full overflow-y-auto space-y-4 bg-cream-50/70 p-4">
       <div className="card p-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <FolderOpen size={14} className="text-clay-500" />
             <span className="text-xs font-medium">Remote Directory</span>
           </div>
-          <span className="text-[10px] text-ink-300">Click folders to enter, files to prepare a download.</span>
+          <span className="text-[10px] text-ink-400">Click folders to enter, files to prepare a download.</span>
         </div>
         <div className="flex gap-1.5 mb-2">
           <input
@@ -314,7 +314,7 @@ function FilesPane({ conn }: { conn: HpcConn }) {
           {entries.map((entry, index) => (
             <button
               key={`${entry.name}:${index}`}
-              className={`group w-full flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-cream-100 text-left
+              className={`group flex w-full cursor-pointer items-center gap-2 rounded-[8px] px-2 py-1 text-left hover:bg-cream-100
                 ${!entry.is_dir && downloadRemote.endsWith('/' + entry.name) ? 'bg-clay-50 text-clay-600' : ''}`}
               onClick={() => onRemoteClick(entry)}
             >
@@ -466,7 +466,7 @@ echo "Job finished at $(date)"
   };
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4 bg-cream-50">
+    <div className="h-full overflow-y-auto space-y-4 bg-cream-50/70 p-4">
       <div className="card p-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ echo "Job finished at $(date)"
             {loading ? <Loader2 size={12} className="animate-spin" /> : 'Refresh'}
           </button>
         </div>
-        <pre className="bg-[#1A1A1A] text-[#D4D4D4] rounded-lg p-2.5 text-xs font-mono overflow-x-auto max-h-48 whitespace-pre-wrap">
+        <pre className="max-h-48 overflow-x-auto whitespace-pre-wrap rounded-lg bg-[#14241C] p-2.5 font-mono text-xs text-[#F5F0E6]">
           {queue || '(empty)'}
         </pre>
       </div>
@@ -554,9 +554,9 @@ function AddConnModal({ projectId, onClose, onCreated }: { projectId?: string; o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg bg-white rounded-lg shadow-lg border border-cream-300" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-cream-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-cream-300 bg-white shadow-lift" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b border-cream-300 bg-cream-50 px-5 py-4">
           <Server size={16} className="text-clay-500" />
           <h2 className="text-base font-medium">{t('hpc.add')}</h2>
         </div>
@@ -605,7 +605,7 @@ function AddConnModal({ projectId, onClose, onCreated }: { projectId?: string; o
             </div>
           )}
         </div>
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-cream-300 bg-cream-50">
+        <div className="flex items-center justify-between border-t border-cream-300 bg-cream-50 px-5 py-3.5">
           <button className="btn-outline text-sm" onClick={test} disabled={!host || !username || testing}>
             {testing ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
             {t('hpc.test')}

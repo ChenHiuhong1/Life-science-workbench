@@ -1,5 +1,5 @@
 export type AgentKey =
-  | 'chat' | 'literature' | 'brainstorm'
+  | 'chat' | 'brainstorm'
   | 'bio' | 'protocol' | 'reviewer' | 'module' | 'document' | 'hpc';
 
 export interface AgentInfo {
@@ -22,7 +22,7 @@ export interface SessionInfo {
   id: string;
   project_id: string;
   title: string;
-  mode: AgentKey;
+  mode: string;
 }
 
 export interface Message {
@@ -47,18 +47,6 @@ export interface Artifact {
   project_path?: string;
   env_snapshot?: string;
   created_at?: string;
-}
-
-export interface Paper {
-  title: string;
-  authors?: string;
-  journal?: string;
-  year?: number;
-  doi?: string;
-  abstract?: string;
-  source?: string;
-  url?: string;
-  citation_count?: number;
 }
 
 export type Lang = 'zh' | 'en';

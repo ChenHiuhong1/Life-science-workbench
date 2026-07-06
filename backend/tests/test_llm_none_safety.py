@@ -151,7 +151,18 @@ def test_keyword_triggered_tools():
     assert select_triggered_tools(keys, "用 R 画图", "bio") == ["run_r"]
     assert select_triggered_tools(keys, "找一下 TCF7 相关文献", "brainstorm") == ["search_literature"]
     assert select_triggered_tools(keys, "简单解释一下这个概念", "chat") == []
-    assert select_triggered_tools(["search_literature"], "TCF7", "literature") == ["search_literature"]
+    assert select_triggered_tools(["search_literature"], "TCF7", "chat") == []
+
+
+def test_literature_agent_is_retired():
+    from backend.core.agent_registry import registry
+
+    registry.agents.clear()
+    registry._prompts.clear()
+    registry.register_all()
+    keys = [agent.key for agent in registry.list()]
+    assert "literature" not in keys
+    assert "brainstorm" in keys
 
 
 def test_stream_openai_none_text_fragments():
@@ -372,7 +383,7 @@ def test_tools_short_query_fallback_arms_agent():
     assert select_triggered_tools(keys, "train a model on this", "chat") == ["run_python"]
     # A bio request with no keyword hit still arms the agent (safety net).
     assert select_triggered_tools(keys, "do something with my experiment", "bio") == keys
-    # Chat / literature stay keyword-gated; greetings stay bare.
+    # Conceptual agents stay keyword-gated; greetings stay bare.
     assert select_triggered_tools(keys, "hi", "chat") == []
     assert select_triggered_tools(keys, "简单解释一下这个概念", "chat") == []
     assert select_triggered_tools(keys, "thanks", "chat") == []
@@ -801,6 +812,7 @@ def _run_all():
     tests = [
         test_pure_helpers,
         test_keyword_triggered_tools,
+        test_literature_agent_is_retired,
         test_stream_openai_none_text_fragments,
         test_stream_openai_none_tool_arguments,
         test_stream_openai_tool_limit_forces_final_summary,

@@ -62,13 +62,13 @@ export function NewProjectModal({ onClose, editProject }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-md bg-white rounded-lg shadow-lg border border-cream-300"
+        className="w-full max-w-md rounded-xl border border-cream-300 bg-white shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-cream-300">
-          <h2 className="text-base font-medium">
+        <div className="flex items-center justify-between border-b border-cream-300 bg-cream-50 px-5 py-4">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">
             {isEdit ? t('newproject.edit_title') : t('newproject.title')}
           </h2>
           <button className="text-ink-300 hover:text-ink-700" onClick={onClose} title="Close">
@@ -92,7 +92,7 @@ export function NewProjectModal({ onClose, editProject }: Props) {
           <div>
             <label className="block text-xs text-ink-500 mb-1">{t('newproject.folder')}</label>
             <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-[8px] border border-cream-300 bg-cream-50 min-w-0">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2">
                 <FolderOpen size={14} className="text-clay-400 shrink-0" />
                 <span className={`text-sm truncate ${folder ? 'text-ink-900' : 'text-ink-300'}`} title={folder}>
                   {folder || t('newproject.empty')}
@@ -110,7 +110,7 @@ export function NewProjectModal({ onClose, editProject }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-cream-300 bg-cream-50">
+        <div className="flex items-center justify-end gap-2 border-t border-cream-300 bg-cream-50 px-5 py-3.5">
           <button className="btn-ghost text-sm" onClick={onClose}>{t('common.cancel')}</button>
           <button
             className="btn-primary text-sm"

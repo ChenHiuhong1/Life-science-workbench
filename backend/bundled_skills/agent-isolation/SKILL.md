@@ -4,10 +4,13 @@ description: Isolation rules that prevent cross-agent context, stream, artifact,
 
 # Agent Isolation
 
-Science Workbench is a multi-agent desktop app. Each agent (Chat, Literature,
-Study Design, Bio-Analysis, Protocol, Reviewer, Module, Document, HPC) is an
+Science Workbench is a multi-agent desktop app. Each agent (Chat, Study Design,
+Bio-Analysis, Protocol, Reviewer, Module, Document, HPC) is an
 isolated workspace surface. Unless the user explicitly asks to combine outputs,
 nothing crosses the boundary between two sessions or two agents.
+
+Literature search is intentionally a shared tool, not a standalone agent. Its
+results belong to the agent session that requested them.
 
 ## Hard Constraints
 
@@ -16,7 +19,7 @@ nothing crosses the boundary between two sessions or two agents.
 - Must not leak tool output, memory, or conversation context from one agent session into another agent session.
 - Must not leak an error, traceback, or failure message from one session into another session's stream. An error belongs only to the session that produced it.
 - Must not use skills, knowledge, or constraints from an unrelated agent unless the user asks for a cross-module synthesis.
-- Do not merge Literature, Bio-Analysis, Protocol, Reviewer, Module, Document, or HPC outputs by default.
+- Do not merge Bio-Analysis, Protocol, Reviewer, Module, Document, or HPC outputs by default.
 - Do not write files outside the project workspace or the app artifact folder unless the user explicitly provides the destination.
 
 ## Non-Interference Between Concurrent Sessions

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, memo } from 'react';
-import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X, ShieldCheck, Loader2, Brain, ListChecks, Plus } from 'lucide-react';
+import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X, ShieldCheck, Loader2, Brain, ListChecks, Plus, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
-import type { AgentInfo, Message } from '@/types';
+import type { AgentInfo, AgentKey, Message } from '@/types';
 import { BrandAvatar } from '@/components/BrandMark';
 import { CodeBlock } from './CodeBlock';
 import { AgentPresets } from './AgentPresets';
@@ -35,6 +35,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
   const currentSessionId = useStore((s) => s.currentSessionId);
   const messages = useStore((s) => s.messages);
   const addMessage = useStore((s) => s.addMessage);
+  const addMessageToSession = useStore((s) => s.addMessageToSession);
   const appendToMessage = useStore((s) => s.appendToMessage);
   const loadArtifacts = useStore((s) => s.loadArtifacts);
   const createSession = useStore((s) => s.createSession);
@@ -53,7 +54,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
   const [effort, setEffort] = useState<'none' | 'high' | 'max'>('max');
   // Pending long-task plan the agent proposed and is waiting for the user to
   // confirm/edit before executing. Mirrors the harness-core "planning gate".
-  const [pendingPlan, setPendingPlan] = useState<{ sid: string; items: string[] } | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<{ sid: string; agent: AgentKey; projectPath: string; items: string[] } | null>(null);
   // Errors are kept per session so a background stream's failure never leaks
   // into whatever session the user is currently viewing (module isolation).
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -131,6 +132,8 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     addMessage({ id: assistantId, role: 'assistant', content: '', toolEvents: [] });
 
     const streamSid = sid;
+    const streamAgent = agent;
+    const streamProjectPath = currentProjectPath;
     const streamKey = `${streamSid}:${assistantId}`;
     activeStreamsRef.current.add(streamKey);
     setStreamingState(streamSid, true);
@@ -140,7 +143,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
       const controller = new AbortController();
       controllersRef.current[streamKey] = controller;
       const resp = await api.chatStream(
-        { session_id: streamSid, agent, messages: history, language: lang, project_path: currentProjectPath, reasoning_effort: effort },
+        { session_id: streamSid, agent: streamAgent, messages: history, language: lang, project_path: streamProjectPath, reasoning_effort: effort },
         controller.signal
       );
       if (!resp.ok) throw new Error(await resp.text());
@@ -248,15 +251,20 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
       const finalContent = (useStore.getState().messagesBySession[streamSid] || [])
         .find((m) => m.id === assistantId)?.content || '';
       const items = extractPlanItems(finalContent);
-      if (items.length) setPendingPlan({ sid: streamSid, items });
+      if (items.length) setPendingPlan({ sid: streamSid, agent: streamAgent, projectPath: streamProjectPath, items });
     }
   };
 
   // Send arbitrary text through the normal streaming pipeline (used to feed a
   // confirmed/edited plan back to the agent as the user's go-ahead).
-  const sendRaw = async (text: string) => {
+  const sendRaw = async (
+    text: string,
+    targetSid = currentSessionId || '',
+    targetAgent: AgentKey = agent,
+    targetProjectPath = currentProjectPath
+  ) => {
     if (!text.trim()) return;
-    const sid = currentSessionId;
+    const sid = targetSid;
     if (!sid) return;
     setInput('');
     setErrorFor(sid, '');
@@ -265,8 +273,8 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     const history = [...cur.filter((m) => m.id !== -1), { role: 'user', content: text }]
       .map((m) => ({ role: m.role, content: m.content }));
     const assistantId = Date.now() + 1;
-    addMessage({ id: Date.now(), role: 'user', content: text });
-    addMessage({ id: assistantId, role: 'assistant', content: '', toolEvents: [] });
+    addMessageToSession(sid, { id: Date.now(), role: 'user', content: text });
+    addMessageToSession(sid, { id: assistantId, role: 'assistant', content: '', toolEvents: [] });
     const streamKey = `${sid}:${assistantId}`;
     activeStreamsRef.current.add(streamKey);
     setStreamingState(sid, true);
@@ -275,13 +283,24 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     controllersRef.current[streamKey] = controller;
     try {
       const resp = await api.chatStream(
-        { session_id: sid, agent, messages: history, language: lang, project_path: currentProjectPath, reasoning_effort: effort },
+        { session_id: sid, agent: targetAgent, messages: history, language: lang, project_path: targetProjectPath, reasoning_effort: effort },
         controller.signal
       );
       if (!resp.ok || !resp.body) throw new Error(await resp.text());
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
+      const pendingTools: Record<string, ToolEvent[]> = {};
+      const addToolEvent = (ev: ToolEvent) => {
+        const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+        const events = [...(curMessage?.toolEvents || []), ev];
+        patchMessageById(sid, assistantId, { toolEvents: events });
+      };
+      const updateToolEvent = (id: string, patch: Partial<ToolEvent>) => {
+        const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+        const events = (curMessage?.toolEvents || []).map((ev) => (ev.id === id ? { ...ev, ...patch } : ev));
+        patchMessageById(sid, assistantId, { toolEvents: events });
+      };
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -292,13 +311,58 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
           if (!line.startsWith('data: ')) continue;
           try {
             const evt = JSON.parse(line.slice(6));
-            if (evt.type === 'meta' && evt.title) updateSessionTitle(sid, evt.title);
-            else if (evt.type === 'delta') appendToMessage(sid, assistantId, evt.content);
+            if (evt.type === 'meta' && evt.title) {
+              updateSessionTitle(sid, evt.title);
+            } else if (evt.type === 'delta') {
+              appendToMessage(sid, assistantId, evt.content);
+            } else if (evt.type === 'tool_call') {
+              const tid = `${evt.name}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+              const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+              const toolEvent = {
+                id: tid,
+                name: evt.name,
+                args: evt.args,
+                status: 'calling',
+                contentOffset: curMessage?.content?.length || 0,
+              } as ToolEvent;
+              pendingTools[evt.name] = [...(pendingTools[evt.name] || []), toolEvent];
+              addToolEvent(toolEvent);
+            } else if (evt.type === 'tool_result') {
+              const pt = pendingTools[evt.name]?.shift();
+              const resultText = String(evt.result ?? '');
+              const failed = /^\[tool error\]|^Error:/i.test(resultText.trim());
+              if (pt) updateToolEvent(pt.id, { status: failed ? 'error' : 'done', result: resultText });
+              loadArtifacts(sid);
+              if (pt && /^\[tool error\]/i.test(resultText)) {
+                const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+                const prefix = curMessage?.content?.trim() ? `${curMessage.content}\n\n` : '';
+                patchMessageById(sid, assistantId, { content: `${prefix}Warning: ${resultText.trim()}` });
+              }
+            } else if (evt.type === 'error') {
+              if (!evt.session_id || evt.session_id === sid) {
+                setErrorFor(sid, evt.message);
+                const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+                const prefix = curMessage?.content?.trim() ? `${curMessage.content}\n\n` : '';
+                patchMessageById(sid, assistantId, { content: `${prefix}Warning: ${evt.message}` });
+              }
+            }
           } catch {}
         }
       }
     } catch (e: any) {
-      if (e?.name !== 'AbortError') setErrorFor(sid, e?.message || 'Connection failed.');
+      if (e?.name === 'AbortError') {
+        const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+        const stoppedText = curMessage?.content?.trim()
+          ? `${curMessage.content}\n\n_${t('chat.output_stopped')}_`
+          : t('chat.output_stopped');
+        patchMessageById(sid, assistantId, { content: stoppedText });
+      } else {
+        const msg = e?.message || 'Connection failed.';
+        setErrorFor(sid, msg);
+        const curMessage = (useStore.getState().messagesBySession[sid] || []).find((m) => m.id === assistantId);
+        const prefix = curMessage?.content?.trim() ? `${curMessage.content}\n\n` : '';
+        patchMessageById(sid, assistantId, { content: `${prefix}Warning: ${msg}` });
+      }
     } finally {
       markStreaming(assistantId, false);
       delete controllersRef.current[streamKey];
@@ -306,6 +370,10 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
       const still = Array.from(activeStreamsRef.current).some((k) => k.startsWith(`${sid}:`));
       setStreamingState(sid, still);
       loadArtifacts(sid);
+      const finalContent = (useStore.getState().messagesBySession[sid] || [])
+        .find((m) => m.id === assistantId)?.content || '';
+      const items = extractPlanItems(finalContent);
+      if (items.length) setPendingPlan({ sid, agent: targetAgent, projectPath: targetProjectPath, items });
     }
   };
 
@@ -330,13 +398,13 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
   };
 
   return (
-    <section className="flex-1 flex flex-col overflow-hidden bg-cream-50">
+    <section className="flex-1 flex flex-col overflow-hidden bg-cream-50/70">
       <WorkspaceBar
         path={currentProjectPath}
         onOpen={() => openFolder(currentProjectPath)}
       />
-      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-3xl mx-auto space-y-5">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-5 py-6">
+        <div className="mx-auto max-w-4xl space-y-5">
           {messages.length === 0 ? (
             <EmptyState agent={agent} t={t} />
           ) : (
@@ -345,7 +413,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
             ))
           )}
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-[#FDF0F0] border border-err/20 text-xs text-err">
+            <div className="flex items-start gap-2 rounded-lg border border-err/20 bg-err/10 px-3 py-2 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span className="flex-1">{error}</span>
               <button
@@ -360,13 +428,13 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-cream-300 bg-white px-4 py-3">
-        <div className="max-w-3xl mx-auto">
+      <div className="shrink-0 border-t border-cream-300 bg-cream-50/95 px-5 py-3.5 shadow-[0_-10px_32px_rgba(80,50,28,0.06)]">
+        <div className="mx-auto max-w-4xl">
           <AgentPresets onInject={(text) => setInput((prev) => (prev ? prev + '\n' : '') + text)} />
-          <div className="relative flex items-end gap-2 card p-2">
+          <div className="relative flex items-end gap-2 rounded-xl border border-cream-300 bg-white/95 p-2 shadow-card">
             <textarea
               className="flex-1 resize-none bg-transparent text-sm text-ink-900 placeholder:text-ink-300
-                         focus:outline-none px-2 py-1.5 max-h-32 min-h-[40px]"
+                         focus:outline-none px-2.5 py-2 max-h-32 min-h-[44px]"
               rows={1}
               placeholder={currentSessionStreaming ? t('chat.streaming_placeholder') : t('chat.placeholder')}
               value={input}
@@ -378,7 +446,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
               onKeyDown={onKeyDown}
             />
             <button
-              className={currentSessionStreaming ? 'btn-outline px-3 py-2 shrink-0 text-err hover:bg-[#FDF0F0]' : 'btn-primary px-3 py-2 shrink-0'}
+              className={currentSessionStreaming ? 'btn-outline px-3 py-2 shrink-0 text-err hover:bg-err/10' : 'btn-primary px-3 py-2 shrink-0'}
               onClick={currentSessionStreaming ? stopCurrent : send}
               disabled={currentSessionStreaming ? false : !input.trim()}
               title={currentSessionStreaming ? 'Stop current response' : 'Send message'}
@@ -387,7 +455,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
             </button>
           </div>
           <div className="flex items-center justify-between mt-1.5 px-2 gap-2">
-            <span className="text-[10px] text-ink-300 shrink-0">
+            <span className="text-[10px] text-ink-400 shrink-0">
               {currentSessionStreaming ? (
                 <span className="text-clay-500">Streaming - you can keep typing</span>
               ) : (
@@ -401,7 +469,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
               onEffort={setEffort}
               streaming={!!currentSessionStreaming}
             />
-            <span className="text-[10px] text-ink-300 shrink-0">
+            <span className="text-[10px] text-ink-400 shrink-0">
               {currentSessionId ? `session ${currentSessionId.slice(0, 8)}` : 'New chat starts on first send'}
             </span>
           </div>
@@ -412,12 +480,13 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
           items={pendingPlan.items}
           onCancel={() => setPendingPlan(null)}
           onConfirm={(editedItems, note) => {
+            const target = pendingPlan;
             const plan = editedItems.map((it, i) => `${i + 1}. ${it}`).join('\n');
             setPendingPlan(null);
             const goMsg = note?.trim()
               ? `Plan confirmed (edited). Proceed:\n${plan}\n\nAdditional note: ${note.trim()}`
               : `Plan confirmed. Proceed:\n${plan}`;
-            sendRaw(goMsg);
+            sendRaw(goMsg, target.sid, target.agent, target.projectPath);
           }}
         />
       )}
@@ -436,9 +505,9 @@ function EmptyState({ agent, t }: { agent: string; t: (k: any) => string }) {
   };
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <BrandAvatar size={56} rounded="rounded-2xl" className="mb-4" />
-      <p className="text-base font-serif text-ink-700 mb-1">{guides[agent] || t('chat.empty.title')}</p>
-      <p className="text-xs text-ink-300">{t('chat.empty.desc')}</p>
+      <BrandAvatar size={60} rounded="rounded-2xl" className="mb-4 shadow-card" />
+      <p className="mb-1 font-serif text-lg font-semibold text-ink-900">{guides[agent] || t('chat.empty.title')}</p>
+      <p className="max-w-sm text-xs leading-relaxed text-ink-400">{t('chat.empty.desc')}</p>
     </div>
   );
 }
@@ -447,7 +516,7 @@ const MessageBubble = memo(function MessageBubble({ message, streaming, agent }:
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] bg-clay-500 text-white rounded-lg rounded-tr-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+        <div className="max-w-[80%] rounded-xl rounded-tr-sm border border-clay-100 bg-clay-50 px-4 py-2.5 text-sm leading-relaxed text-ink-900 shadow-subtle whitespace-pre-wrap">
           {message.content}
         </div>
       </div>
@@ -643,7 +712,7 @@ function AssistantOutputReview({ content, agent }: { content: string; agent: str
   return (
     <div className="mt-2">
       <button
-        className="inline-flex items-center gap-1.5 rounded-[8px] border border-cream-300 bg-white px-2 py-1 text-[11px] text-ink-500 hover:bg-cream-100"
+        className="inline-flex items-center gap-1.5 rounded-[10px] border border-cream-300 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-ink-500 hover:bg-cream-100"
         onClick={open && review ? () => setOpen((v) => !v) : runReview}
         title="Review this output"
       >
@@ -651,7 +720,7 @@ function AssistantOutputReview({ content, agent }: { content: string; agent: str
         <span>{reviewing ? 'Reviewing' : open && review ? 'Hide review' : 'Review output'}</span>
       </button>
       {open && (reviewing || review || error) && (
-        <div className="mt-2 rounded-lg border border-cream-300 bg-cream-50 p-3">
+        <div className="mt-2 rounded-lg border border-cream-300 bg-white/70 p-3">
           {error ? (
             <div className="flex items-start gap-2 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -732,16 +801,16 @@ function ContextAndEffortBar({
   const [ctxOpen, setCtxOpen] = useState(false);
 
   return (
-    <div className="flex items-center gap-2.5 flex-1 min-w-0 justify-center relative">
-      {/* Context window meter — click to expand a detailed breakdown popover. */}
+    <div className="relative flex min-w-0 flex-1 items-center justify-center gap-2.5">
+      {/* Context window meter: click to expand a detailed breakdown popover. */}
       <button
         type="button"
         onClick={() => setCtxOpen((v) => !v)}
         className="flex items-center gap-1.5 min-w-0 shrink-0 hover:opacity-80 transition-opacity"
         title="Click for context-window details"
       >
-        <span className="text-[10px] text-ink-300 shrink-0 hidden sm:inline">ctx</span>
-        <div className="w-24 h-1.5 rounded-full bg-cream-200 overflow-hidden shrink-0">
+        <span className="hidden shrink-0 text-[10px] text-ink-400 sm:inline">ctx</span>
+        <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-cream-200 shadow-[inset_0_1px_2px_rgba(49,37,28,0.08)]">
           <div className={`h-full ${barColor} transition-all`} style={{ width: `${Math.max(2, pct)}%` }} />
         </div>
         <span className="text-[10px] text-ink-400 tabular-nums shrink-0">{pct}%</span>
@@ -749,12 +818,12 @@ function ContextAndEffortBar({
       {ctxOpen && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setCtxOpen(false)} />
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 w-64 card p-3 text-[11px] text-ink-600 shadow-lg">
+          <div className="absolute bottom-6 left-1/2 z-40 w-64 -translate-x-1/2 rounded-lg border border-cream-300 bg-white p-3 text-[11px] text-ink-600 shadow-lift">
             <div className="flex items-center justify-between mb-1.5">
               <span className="font-semibold text-ink-800">Context window</span>
               <span className="text-ink-400">{(usedTokens / 1000).toFixed(1)}K / {(windowTokens / 1000).toFixed(0)}K</span>
             </div>
-            <div className="h-2 rounded-full bg-cream-200 overflow-hidden mb-2">
+            <div className="mb-2 h-2 overflow-hidden rounded-full bg-cream-200">
               <div className={`h-full ${barColor}`} style={{ width: `${Math.max(2, pct)}%` }} />
             </div>
             <div className="space-y-1">
@@ -774,7 +843,7 @@ function ContextAndEffortBar({
       {/* Per-message thinking tier selector */}
       <div className="flex items-center gap-1 shrink-0" title="Thinking intensity for this message">
         <Brain size={11} className="text-ink-400" />
-        <div className="flex rounded-[6px] border border-cream-300 overflow-hidden">
+        <div className="flex overflow-hidden rounded-[8px] border border-cream-300 bg-white/50">
           {(['none', 'high', 'max'] as const).map((tier) => (
             <button
               key={tier}
@@ -837,16 +906,16 @@ function PlanConfirmModal({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-sm" onClick={close}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-clay-600/15 backdrop-blur-sm" onClick={close}>
       <div
-        className="w-full max-w-lg bg-white rounded-lg shadow-lg border border-cream-300 max-h-[85vh] overflow-y-auto"
+        className="w-full max-w-lg overflow-y-auto rounded-xl border border-cream-300 bg-white shadow-lift max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3.5 border-b border-cream-300 flex items-center gap-2">
+        <div className="flex items-center gap-2 border-b border-cream-300 px-5 py-3.5">
           <ListChecks size={16} className="text-clay-500" />
           <h3 className="font-serif text-base font-semibold text-ink-900">Confirm the plan</h3>
         </div>
-        <div className="px-5 py-3 text-xs text-ink-500 border-b border-cream-200 bg-cream-50">
+        <div className="border-b border-cream-200 bg-cream-50 px-5 py-3 text-xs text-ink-500">
           The agent has decomposed this task into the steps below. Edit, remove, or add steps, then confirm to let it proceed. Cancel to redirect the agent.
         </div>
         <div className="px-5 py-4 space-y-2">
@@ -879,7 +948,7 @@ function PlanConfirmModal({
             rows={2}
           />
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-cream-300 bg-cream-50">
+        <div className="flex items-center justify-end gap-2 border-t border-cream-300 bg-cream-50 px-5 py-3">
           <button className="btn-ghost text-sm" onClick={close}>Cancel</button>
           <button className="btn-primary text-sm" onClick={confirm}>
             Confirm & proceed
@@ -894,7 +963,7 @@ function WorkspaceBar({ path, onOpen }: { path: string; onOpen: () => void }) {
   const t = useI18n((s) => s.t);
   if (path) {
     return (
-      <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b border-cream-200 bg-cream-100/60 text-xs">
+      <div className="shrink-0 flex items-center gap-2 border-b border-cream-300 bg-cream-100/70 px-4 py-1.5 text-xs">
         <FolderOpen size={12} className="shrink-0 text-clay-500" />
         <span className="text-ink-400">{t('chat.workspace')}</span>
         <span className="truncate flex-1 font-mono text-ink-700" title={path}>{path}</span>
@@ -903,26 +972,15 @@ function WorkspaceBar({ path, onOpen }: { path: string; onOpen: () => void }) {
           onClick={onOpen}
           title={t('nav.open_folder')}
         >
-          <ExternalLinkIcon />
+          <ExternalLink size={12} />
         </button>
       </div>
     );
   }
   return (
-    <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b border-cream-200 bg-cream-100/60 text-xs text-ink-400">
+    <div className="shrink-0 flex items-center gap-2 border-b border-cream-300 bg-cream-100/70 px-4 py-1.5 text-xs text-ink-400">
       <FolderPlus size={12} className="shrink-0" />
       <span>{t('chat.no_workspace')}</span>
     </div>
-  );
-}
-
-function ExternalLinkIcon() {
-  // tiny inline to avoid an extra lucide import name clash
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
   );
 }

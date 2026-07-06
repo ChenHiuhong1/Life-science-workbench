@@ -9,7 +9,6 @@ import type { AgentInfo, AgentKey, Project } from '@/types';
 
 const AGENT_NAV: { key: AgentKey; tKey: any }[] = [
   { key: 'chat', tKey: 'nav.chat' },
-  { key: 'literature', tKey: 'nav.literature' },
   { key: 'brainstorm', tKey: 'nav.brainstorm' },
   { key: 'bio', tKey: 'nav.bio' },
   { key: 'protocol', tKey: 'nav.protocol' },
@@ -78,8 +77,8 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
   };
 
   return (
-    <aside className="w-60 shrink-0 border-r border-cream-300 bg-cream-50 flex flex-col overflow-hidden">
-      <div className="px-3 py-3 space-y-0.5">
+    <aside className="w-64 shrink-0 border-r border-cream-300 bg-cream-100/50 flex flex-col overflow-hidden shadow-[inset_-1px_0_0_rgba(255,255,255,0.62)]">
+      <div className="px-3 py-3.5 space-y-1">
         {AGENT_NAV.map(({ key, tKey }) => {
           const Icon = AGENT_ICONS[agents.find((item) => item.key === key)?.icon || 'message'] || MessageSquare;
           const active = agent === key;
@@ -98,13 +97,13 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
 
       <div className="h-px bg-cream-300 mx-3" />
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="flex-1 overflow-y-auto px-3 py-3.5">
         <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-300">
+          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-400">
             {t('nav.section.projects')}
           </span>
           <button
-            className="text-ink-300 hover:text-clay-600 p-1 rounded hover:bg-cream-100"
+            className="text-ink-400 hover:text-clay-600 p-1 rounded-[8px] hover:bg-white"
             onClick={() => setNewProjOpen(true)}
             title={t('nav.new_project')}
           >
@@ -126,8 +125,8 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
             return (
               <div key={project.id}>
                 <div
-                  className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[8px] cursor-pointer text-sm
-                    ${isActive ? 'bg-cream-100 text-ink-900' : 'text-ink-500 hover:bg-cream-100'}`}
+                  className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[10px] cursor-pointer text-sm transition-colors
+                    ${isActive ? 'bg-white text-ink-900 shadow-subtle ring-1 ring-cream-300' : 'text-ink-500 hover:bg-white/70 hover:text-ink-900'}`}
                   onClick={() => selectProject(project.id)}
                 >
                   <button
@@ -140,18 +139,18 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                   >
                     <ChevronDown size={12} className={collapsed ? '-rotate-90 transition-transform' : 'transition-transform'} />
                   </button>
-                  <Folder size={13} strokeWidth={1.75} className="shrink-0 text-clay-400" />
+                  <Folder size={13} strokeWidth={1.75} className="shrink-0 text-clay-500" />
                   <span className="truncate flex-1" title={project.name}>{project.name}</span>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      className="text-ink-300 hover:text-clay-600 p-1 rounded hover:bg-cream-200"
+                      className="text-ink-300 hover:text-clay-600 p-1 rounded-[8px] hover:bg-cream-100"
                       title={t('nav.edit_project')}
                       onClick={(e) => { e.stopPropagation(); setEditingProject(project); }}
                     >
                       <Settings2 size={11} />
                     </button>
                     <button
-                      className="text-ink-300 hover:text-warn p-1 rounded hover:bg-cream-200"
+                      className="text-ink-300 hover:text-warn p-1 rounded-[8px] hover:bg-cream-100"
                       title="Archive"
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -163,7 +162,7 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                       <Archive size={11} />
                     </button>
                     <button
-                      className="text-ink-300 hover:text-err p-1 rounded hover:bg-cream-200"
+                      className="text-ink-300 hover:text-err p-1 rounded-[8px] hover:bg-cream-100"
                       title="Delete"
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -179,7 +178,7 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                 </div>
 
                 {isActive && !collapsed && (
-                  <div className="ml-5 mt-0.5 space-y-0.5 border-l border-cream-300 pl-2">
+                  <div className="ml-5 mt-1 space-y-1 border-l border-cream-300 pl-2">
                     {project.local_path && (
                       <div className="group flex items-center gap-1.5 px-2 py-1 text-xs text-ink-400">
                         <FolderOpen size={11} className="shrink-0" />
@@ -210,8 +209,8 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                     {sessions.map((session) => (
                       <div
                         key={session.id}
-                        className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[8px] cursor-pointer text-xs
-                          ${currentSessionId === session.id ? 'bg-clay-50 text-clay-600' : 'text-ink-500 hover:bg-cream-100'}`}
+                        className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[10px] cursor-pointer text-xs transition-colors
+                          ${currentSessionId === session.id ? 'bg-clay-50 text-clay-600 ring-1 ring-clay-100' : 'text-ink-500 hover:bg-white/70 hover:text-ink-900'}`}
                         onClick={() => selectSession(session.id)}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
@@ -279,7 +278,7 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
         </div>
       </div>
 
-      <div className="border-t border-cream-300 px-3 py-2">
+      <div className="border-t border-cream-300 px-3 py-2.5 bg-cream-50/50">
         <button
           className={`nav-item w-full ${agent === ('hpc' as any) ? 'nav-item-active' : ''}`}
           onClick={() => setAgent('hpc' as AgentKey)}

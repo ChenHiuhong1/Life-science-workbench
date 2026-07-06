@@ -23,9 +23,9 @@ function fileCategory(name: string): FileCategory {
 
 function FileIcon({ name }: { name: string }) {
   const cat = fileCategory(name);
-  if (cat === 'Figure') return <Image size={12} className="text-clay-500 shrink-0" />;
-  if (cat === 'Table' || cat === 'Data') return <FileSpreadsheet size={12} className="text-ink-500 shrink-0" />;
-  return <FileText size={12} className="text-ink-500 shrink-0" />;
+  if (cat === 'Figure') return <Image size={12} className="shrink-0 text-clay-500" />;
+  if (cat === 'Table' || cat === 'Data') return <FileSpreadsheet size={12} className="shrink-0 text-ink-600" />;
+  return <FileText size={12} className="shrink-0 text-ink-600" />;
 }
 
 interface FileItem {
@@ -64,7 +64,7 @@ export function ArtifactPanel() {
   if (collapsed) {
     return (
       <button
-        className="w-10 shrink-0 border-l border-cream-300 bg-cream-50 flex flex-col items-center pt-3 hover:bg-cream-100"
+        className="flex w-10 shrink-0 flex-col items-center border-l border-cream-300 bg-cream-100/60 pt-3 hover:bg-cream-100"
         onClick={() => setCollapsed(false)}
         title="Expand artifacts"
       >
@@ -79,16 +79,16 @@ export function ArtifactPanel() {
   const active = fileItems.find((f) => f.path === activePath) || fileItems[0];
 
   return (
-    <aside className="w-80 shrink-0 border-l border-cream-300 bg-white flex flex-col overflow-hidden">
-      <div className="h-10 shrink-0 border-b border-cream-300 flex items-center justify-between px-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+    <aside className="w-[21rem] shrink-0 border-l border-cream-300 bg-white/80 flex flex-col overflow-hidden shadow-[inset_1px_0_0_rgba(255,255,255,0.6)]">
+      <div className="h-11 shrink-0 border-b border-cream-300 bg-cream-50/70 flex items-center justify-between px-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-500">
           {t('artifact.title')}
           {fileItems.length > 0 && (
             <span className="ml-1.5 text-ink-300 normal-case">({fileItems.length})</span>
           )}
         </span>
         <button
-          className="text-ink-300 hover:text-ink-700 p-1 rounded hover:bg-cream-100"
+          className="rounded-[8px] p-1 text-ink-300 hover:bg-white hover:text-ink-700"
           onClick={() => setCollapsed(true)}
           title="Collapse artifacts"
         >
@@ -105,22 +105,22 @@ export function ArtifactPanel() {
         </div>
       ) : (
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-36 shrink-0 border-r border-cream-300 overflow-y-auto py-1.5">
+          <div className="w-40 shrink-0 overflow-y-auto border-r border-cream-300 bg-cream-50/60 py-1.5">
             {fileItems.map((f) => (
               <button
                 key={`${f.artId}:${f.path}`}
                 onClick={() => setActivePath(f.path)}
-                className={`w-full text-left px-2.5 py-2 border-l-2 transition-colors ${
+                className={`w-full border-l-2 px-2.5 py-2 text-left transition-colors ${
                   active?.path === f.path
-                    ? 'border-clay-500 bg-clay-50'
-                    : 'border-transparent hover:bg-cream-100'
+                    ? 'border-clay-500 bg-white shadow-subtle'
+                    : 'border-transparent hover:bg-white/70'
                 }`}
               >
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <FileIcon name={f.name} />
                   <span className="text-[9px] uppercase text-ink-300">{f.category}</span>
                 </div>
-                <div className="text-xs text-ink-700 truncate leading-tight">{f.name}</div>
+                <div className="truncate text-xs font-medium leading-tight text-ink-700">{f.name}</div>
               </button>
             ))}
           </div>
@@ -149,14 +149,14 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
   };
 
   return (
-    <div className="p-3 space-y-2.5">
+    <div className="space-y-3 p-3">
       <div className="flex items-center gap-2">
         <FileIcon name={item.name} />
         <span className="text-xs font-medium text-ink-800 truncate flex-1" title={item.name}>
           {item.name}
         </span>
         <button
-          className="text-ink-300 hover:text-ink-700 p-1 rounded hover:bg-cream-100"
+          className="rounded-[8px] p-1 text-ink-300 hover:bg-cream-100 hover:text-ink-700"
           onClick={onCollapse}
           title="Collapse artifacts"
         >
@@ -164,18 +164,18 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
         </button>
       </div>
 
-      <div className="text-[10px] text-ink-300 truncate">From: {item.artTitle}</div>
+      <div className="truncate text-[10px] font-medium text-ink-400">From: {item.artTitle}</div>
 
       {isImage && (
         <a href={url} target="_blank" rel="noreferrer" title="Open full size">
-          <div className="rounded-lg overflow-hidden border border-cream-300 bg-cream-50">
+          <div className="overflow-hidden rounded-lg border border-cream-300 bg-cream-50 shadow-subtle">
             <img src={url} alt={item.name} className="w-full" />
           </div>
         </a>
       )}
 
       {isPdf && (
-        <div className="rounded-lg overflow-hidden border border-cream-300 bg-cream-50 h-72">
+        <div className="h-72 overflow-hidden rounded-lg border border-cream-300 bg-cream-50">
           <object data={url} type="application/pdf" className="w-full h-full" title={item.name}>
             <div className="p-3 text-center">
               <FileText size={24} className="mx-auto text-ink-400 mb-1.5" />
@@ -206,13 +206,13 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
       {item.artifact?.code && (
         <div>
           <button
-            className="text-[10px] uppercase tracking-wider text-ink-400 hover:text-ink-700"
+            className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink-400 hover:text-ink-700"
             onClick={() => setShowCode((v) => !v)}
           >
             {showCode ? 'Hide' : 'Show'} source ({item.artifact.language || 'code'})
           </button>
           {showCode && (
-            <pre className="mt-1 bg-[#1E1E1E] text-[#E4E4E4] rounded p-2 text-[11px] font-mono overflow-x-auto max-h-48 whitespace-pre-wrap">
+            <pre className="mt-1 max-h-48 overflow-x-auto whitespace-pre-wrap rounded bg-[#14241C] p-2 font-mono text-[11px] text-[#F5F0E6]">
               {item.artifact.code}
             </pre>
           )}
@@ -221,8 +221,8 @@ function FileDetail({ item, onCollapse }: { item: FileItem; onCollapse: () => vo
 
       <button
         onClick={showInFolder}
-        className="w-full flex items-center justify-center gap-1.5 px-2 py-2 text-xs rounded-[8px]
-                   bg-clay-50 border border-clay-100 text-clay-600 hover:bg-clay-100 transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 rounded-[10px]
+                   border border-clay-100 bg-clay-50 px-2 py-2 text-xs font-semibold text-clay-600 transition-colors hover:bg-clay-100"
       >
         <FolderOpen size={13} /> Show in Folder
       </button>
@@ -281,7 +281,7 @@ function TablePreview({ path, projectPath, ext }: { path: string; projectPath?: 
   const [header, ...body] = rows;
   const truncated = body.length >= 50;
   return (
-    <div className="rounded-lg border border-cream-300 bg-white overflow-auto max-h-72">
+    <div className="max-h-72 overflow-auto rounded-lg border border-cream-300 bg-white shadow-subtle">
       <table className="w-full text-[10px]">
         <thead className="sticky top-0 bg-cream-100">
           <tr>{header.map((c, i) => <th key={i} className="border border-cream-300 px-1.5 py-1 text-left font-semibold whitespace-nowrap">{c}</th>)}</tr>
@@ -309,7 +309,7 @@ function ArtifactReview({ output }: { output: string }) {
   const review = output.slice(idx + marker.length).trim();
   if (!review) return null;
   return (
-    <div className="rounded-lg border border-cream-200 bg-cream-50 px-2.5 py-2 text-[11px] text-ink-600 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+      <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border border-cream-200 bg-white/70 px-2.5 py-2 text-[11px] leading-relaxed text-ink-600">
       {review}
     </div>
   );

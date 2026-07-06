@@ -1,9 +1,9 @@
 /**
- * Science Workbench brand mark — a life-science DNA double helix.
+ * Science Workbench brand mark: a life-science DNA double helix.
  *
  * `BrandGlyph` is a pure stroke glyph that inherits `currentColor`, so it can be
  * dropped anywhere (avatars, empty states, buttons). `BrandLogo` wraps it in the
- * app's clay rounded-tile identity for headers and hero spots.
+ * app's SYSU green tile identity for headers and hero spots.
  */
 
 interface GlyphProps {
@@ -51,7 +51,7 @@ interface LogoProps {
 export function BrandLogo({ size = 28, className = '', rounded = 'rounded-[8px]' }: LogoProps) {
   return (
     <div
-      className={`shrink-0 grid place-items-center bg-gradient-to-br from-clay-400 to-clay-600 text-white shadow-subtle ${rounded} ${className}`}
+      className={`shrink-0 grid place-items-center bg-gradient-to-br from-clay-300 via-clay-500 to-clay-600 text-white shadow-subtle ring-1 ring-cream-300/80 ${rounded} ${className}`}
       style={{ width: size, height: size }}
     >
       <BrandGlyph size={Math.round(size * 0.62)} strokeWidth={2.1} />
@@ -80,7 +80,7 @@ export function BrandAvatar({ size = 28, className = '', rounded = 'rounded-[8px
       width={size}
       height={size}
       draggable={false}
-      className={`shrink-0 object-cover bg-gradient-to-br from-clay-400 to-clay-600 shadow-subtle ${rounded} ${className}`}
+      className={`shrink-0 object-cover bg-gradient-to-br from-clay-300 via-clay-500 to-clay-600 shadow-subtle ring-1 ring-cream-300/80 ${rounded} ${className}`}
       style={{ width: size, height: size }}
     />
   );

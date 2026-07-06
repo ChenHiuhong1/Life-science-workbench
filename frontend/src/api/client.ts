@@ -1,4 +1,4 @@
-import type { Project, SessionInfo, Message, Artifact, AgentInfo, Paper } from '@/types';
+import type { Project, SessionInfo, Message, Artifact, AgentInfo } from '@/types';
 
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN || 'http://127.0.0.1:8000').replace(/\/$/, '');
 export const API_BASE = `${API_ORIGIN}/api`;
@@ -114,22 +114,6 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
       signal,
-    }),
-
-  searchLiterature: (query: string, sources?: string[], limit = 8) =>
-    jpost(`${BASE}/literature/search`, { query, sources, limit }).then(
-      (data: any) => ({ papers: data.papers as Paper[], failed: (data.failed || []) as string[] })
-    ),
-  starLiterature: (paper: Paper) =>
-    jpost(`${BASE}/literature/star`, {
-      doi: paper.doi,
-      title: paper.title,
-      authors: paper.authors,
-      journal: paper.journal,
-      year: paper.year,
-      abstract: paper.abstract,
-      source: paper.source,
-      url: paper.url,
     }),
 
   listArtifacts: (sid: string): Promise<Artifact[]> =>

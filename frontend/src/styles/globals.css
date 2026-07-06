@@ -8,14 +8,14 @@
     margin: 0;
   }
   html {
-    /* Bump the root font-size up so every rem-based Tailwind utility
-       (text-sm, text-base, px-3, ...) scales together. This is the cleanest
-       way to enlarge the whole UI without rewriting per-component classes. */
-    font-size: 19px;
+    font-size: 17px;
   }
   body {
-    @apply bg-cream-50 text-ink-900 font-serif antialiased;
-    font-feature-settings: 'cv11', 'ss01';
+    @apply bg-cream-50 text-ink-900 font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv05', 'ss01', 'tnum';
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
   }
   ::selection {
     @apply bg-clay-100 text-ink-900;
@@ -24,47 +24,48 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-[8px]
-           text-sm font-medium transition-colors duration-150 select-none;
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-[10px]
+           text-sm font-semibold transition-all duration-150 select-none
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay-400/35;
   }
   .btn-primary {
-    @apply btn bg-clay-500 text-white hover:bg-clay-600 active:bg-clay-600
+    @apply btn bg-clay-600 text-white hover:bg-clay-500 active:bg-ink-800 shadow-subtle
            disabled:bg-cream-300 disabled:text-ink-300 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply btn text-ink-700 hover:bg-cream-100;
+    @apply btn text-ink-700 hover:bg-cream-100 active:bg-cream-200;
   }
   .btn-outline {
-    @apply btn border border-cream-300 bg-white text-ink-700 hover:bg-cream-100;
+    @apply btn border border-cream-300 bg-white/80 text-ink-700 hover:bg-cream-100 active:bg-cream-200;
   }
 
   .card {
-    @apply bg-white border border-cream-300 rounded-lg shadow-subtle;
+    @apply bg-white/90 border border-cream-300 rounded-lg shadow-subtle;
   }
 
   .input {
-    @apply w-full px-3 py-2 rounded-[8px] border border-cream-300 bg-white
+    @apply w-full px-3 py-2 rounded-[10px] border border-cream-300 bg-white/90
            text-sm text-ink-900 placeholder:text-ink-300
-           focus:outline-none focus:border-clay-400 focus:ring-1 focus:ring-clay-400/30
-           transition-colors;
+           focus:outline-none focus:border-clay-500 focus:ring-2 focus:ring-clay-400/20
+           transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.75)];
   }
 
   .nav-item {
-    @apply flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-sm cursor-pointer
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm cursor-pointer
            text-ink-500 hover:bg-cream-100 hover:text-ink-900 transition-colors;
   }
   .nav-item-active {
-    @apply bg-clay-50 text-clay-600 font-medium hover:bg-clay-50;
+    @apply bg-white text-ink-900 font-semibold hover:bg-white shadow-subtle ring-1 ring-cream-300;
   }
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #D8D6CA; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #C8C6BA; }
+::-webkit-scrollbar-thumb { background: #BFA77D; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #006A3A; }
 
 .prose pre {
-  @apply bg-[#1E1E1E] text-[#E4E4E4] rounded-lg p-4 overflow-x-auto text-sm font-mono my-3;
+  @apply bg-[#14241C] text-[#F5F0E6] rounded-lg p-4 overflow-x-auto text-sm font-mono my-3;
 }
 .prose code:not(pre code) {
   @apply bg-cream-100 text-clay-600 px-1.5 py-0.5 rounded text-[0.9em] font-mono;
@@ -98,7 +99,7 @@
   height: 1em;
   margin-left: 2px;
   vertical-align: -0.15em;
-  background: #D97757;
+  background: #006A3A;
   border-radius: 1px;
   animation: sw-caret 1s steps(1) infinite;
 }
@@ -113,7 +114,7 @@
   width: 6px;
   height: 6px;
   border-radius: 9999px;
-  background: #D97757;
+  background: #006A3A;
   display: inline-block;
   animation: sw-typing 1.1s ease-in-out infinite;
 }
@@ -129,6 +130,51 @@
 }
 
 @keyframes sw-pulse-slow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 87, 0.35); }
-  50% { box-shadow: 0 0 0 4px rgba(217, 119, 87, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 106, 58, 0.28); }
+  50% { box-shadow: 0 0 0 4px rgba(0, 106, 58, 0); }
+}
+
+/* --- Launch layer ------------------------------------------------------- */
+
+.launch-shell {
+  animation: sw-launch-shell 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.launch-panel {
+  animation: sw-launch-panel 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.launch-progress {
+  transform-origin: left center;
+  animation: sw-launch-progress 960ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes sw-launch-shell {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sw-launch-panel {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes sw-launch-progress {
+  from { transform: scaleX(0.14); }
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-shell,
+  .launch-panel,
+  .launch-progress,
+  .stream-active > *:last-child::after,
+  .typing-dot,
+  .animate-pulse-slow {
+    animation: none !important;
+  }
+
+  .launch-progress {
+    transform: scaleX(1);
+  }
 }

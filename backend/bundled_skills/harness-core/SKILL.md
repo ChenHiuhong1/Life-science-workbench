@@ -21,7 +21,7 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 
 ## Execution Loop (perceive → plan → act → verify)
 
-1. **Perceive** — classify the request: conversation, literature, study design, bioinformatics, protocol, review, module packaging, document drafting, or HPC. Read only the files and skills the selected agent needs.
+1. **Perceive** — classify the request: conversation, evidence lookup, study design, bioinformatics, protocol, review, module packaging, document drafting, or HPC. Read only the files and skills the selected agent needs.
 2. **Plan** — for a multi-step task, state the smallest correct plan before acting. Confirm safety-critical, conclusion-critical, or irreversible assumptions first.
 3. **Act** — use tools for reproducible calculation, literature lookup, figure generation, file conversion, and artifact production. Prefer one well-scoped tool call over several speculative ones.
 4. **Verify** — after each tool call, check the result before continuing. If a run failed, read the error and fix the cause; never paper over a failure by silently switching to a weaker method that changes the scientific conclusion.
@@ -35,6 +35,7 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 - Every code run must set a short, content-matching title so the saved script name follows `NN_content.ext`.
 - Treat every tool result as data to be checked, not as ground truth to be echoed.
 - Never fabricate a tool result you did not receive, and never continue as if a failed tool had succeeded.
+- Literature search is a tool, not a standalone agent. If evidence is needed, call `search_literature` from the active agent and keep the result inside that session.
 
 ## Failure Handling
 
@@ -42,6 +43,21 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 - Always provide a practical fallback when a tool or dependency is unavailable.
 - Never let an error from one tool call abort the user's whole task without an explanation of what failed and what to try next.
 - A failure is owned by the session that produced it. Never carry an error, traceback, or partial result from one session or agent into another (see the agent-isolation skill).
+
+## Agent Handoff Contract
+
+Before switching strategy, recommending another module, or packaging a workflow,
+name the reason for the handoff and what the receiving agent owns. A handoff is
+only complete when the output includes:
+
+- current agent and session scope;
+- source material used;
+- tools run and whether they succeeded;
+- generated artifacts, citations, or draft module specs;
+- open risks or user decisions still needed.
+
+Do not turn a handoff into a hidden context merge. The receiving agent must own
+new output; the source agent's artifacts are references, not mutable state.
 
 ## Autonomous Error Recovery (mandatory)
 

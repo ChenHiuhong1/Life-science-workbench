@@ -6,7 +6,7 @@ import { api } from '@/api/client';
 
 const PRESETS = [
   // glm-5.2 base id already provides the full 1M context (verified by live
-  // probe — it accepts 400K-token inputs natively). Don't expose a [1m]
+  // probe: it accepts 400K-token inputs natively). Don't expose a [1m]
   // variant: that suffix returns "model not found" on the Anthropic endpoint.
   { name: 'GLM-5.2 (1M context)', base: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-5.2' },
   { name: 'GLM-4.6', base: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4.6' },
@@ -109,12 +109,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-lg bg-white rounded-lg shadow-lg border border-cream-300 max-h-[90vh] overflow-y-auto"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-cream-300 bg-white shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-cream-300">
+        <div className="flex items-center justify-between border-b border-cream-300 bg-cream-50 px-5 py-4">
           <h2 className="font-serif text-lg font-semibold text-ink-900">{t('settings.title')}</h2>
           <button className="text-ink-300 hover:text-ink-700" onClick={onClose} title="Close settings">
             <X size={18} />
@@ -183,7 +183,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       onClick={clearApiKey}
                       title="Remove the stored API key from this machine"
                       className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-[8px]
-                                 border border-err/30 text-err hover:bg-[#FDF0F0]"
+                                 border border-err/30 text-err hover:bg-err/10"
                     >
                       <Trash2 size={12} /> Clear
                     </button>
@@ -285,7 +285,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-cream-300 bg-cream-50">
+        <div className="flex items-center justify-end gap-2 border-t border-cream-300 bg-cream-50 px-5 py-3.5">
           <button className="btn-ghost text-sm" onClick={onClose}>{t('common.cancel')}</button>
           <button className="btn-primary text-sm" onClick={save} disabled={loading}>
             {saved ? <><Check size={14} /> {t('settings.saved')}</> : t('settings.save')}
@@ -299,9 +299,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-ink-500">
+      <div className="mb-2 flex items-center gap-1.5 text-ink-600">
         {icon}
-        <span className="text-xs font-semibold uppercase tracking-wider">{title}</span>
+        <span className="text-xs font-bold uppercase tracking-[0.14em]">{title}</span>
       </div>
       <div className="space-y-2">{children}</div>
     </div>
@@ -320,7 +320,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function PathRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-ink-300">{label}</div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-400">{label}</div>
       <div className="text-xs font-mono text-ink-700 break-all">{value || '-'}</div>
     </div>
   );

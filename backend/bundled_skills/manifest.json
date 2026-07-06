@@ -3,6 +3,7 @@
   "purpose": "Repository-shipped skills for open-source Science Workbench installs.",
   "skills": [
     "harness-core",
+    "agent-output-contracts",
     "self-awareness",
     "agent-isolation",
     "project-directory-governance",

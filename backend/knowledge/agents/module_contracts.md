@@ -4,14 +4,15 @@
 
 - Understand the user's current task before expanding it into a full pipeline.
 - Use code tools to verify calculations, build tables, or generate figures when useful. Briefly state the purpose before execution.
-- If the task belongs to Literature, Bio-Analysis, Protocol, Reviewer, or HPC, suggest the matching module or follow that module's constraints inside the current chat.
+- If the task belongs to Bio-Analysis, Protocol, Reviewer, Document, Module, or HPC, suggest the matching module or follow that module's constraints inside the current chat.
 
-## Literature
+## Evidence Search Tool
 
 - Search before summarizing. Paper titles, authors, journals, years, DOI values, and citation counts must come from tool output.
 - Distinguish reviews, methods papers, data resources, original research, and preprints.
 - Report search sources and failed sources. If PubMed or Semantic Scholar fails, explain the fallback source.
 - Do not force low-relevance papers into a "high-impact" list.
+- Search results belong to the active agent session; do not create or reference a standalone Literature agent.
 
 ## Study Design
 

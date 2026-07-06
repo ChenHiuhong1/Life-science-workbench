@@ -1,7 +1,7 @@
 """Generate high-definition installer brand bitmaps.
 
-Life-science concept art (DNA double helix, molecular node network, cell
-motifs) rendered in the app's cream + clay identity.
+Warm premium research-instrument panels rendered in the app's SYSU green,
+warm ivory, and deep green ink identity.
 
 To stay sharp on high-DPI displays despite NSIS's fixed small canvas sizes
 (164x314 sidebar, 493x312 MSI dialog), every bitmap is drawn at 4x on a large
@@ -30,35 +30,45 @@ except ImportError as exc:  # pragma: no cover - friendly message for CI/local
 
 
 # --- Brand tokens (mirrors frontend/tailwind.config.js) ---------------------
-CREAM_50 = (250, 249, 245)      # app background
-CREAM_100 = (245, 244, 238)
-CREAM_300 = (232, 230, 220)     # app borders
-CLAY_500 = (217, 119, 87)       # primary brand color
-CLAY_600 = (197, 99, 68)
-CLAY_400 = (232, 155, 126)
-CLAY_300 = (240, 180, 158)
-CLAY_50 = (253, 244, 240)
-TEAL_500 = (91, 138, 90)        # complementary life-science green
-TEAL_300 = (158, 190, 158)
-INK_900 = (26, 26, 26)
-INK_700 = (64, 64, 64)
-INK_500 = (107, 107, 107)
-INK_300 = (154, 154, 154)
+CREAM_50 = (250, 248, 241)      # app background
+CREAM_100 = (243, 238, 226)
+CREAM_200 = (232, 221, 200)
+CREAM_300 = (216, 198, 166)     # app borders
+CLAY_600 = (0, 79, 45)
+CLAY_500 = (0, 106, 58)         # SYSU green
+CLAY_400 = (46, 133, 86)
+CLAY_300 = (115, 176, 141)
+CLAY_50 = (234, 244, 238)
+TEAL_500 = (46, 133, 86)        # restrained scientific green
+TEAL_300 = (126, 170, 145)
+INK_900 = (20, 36, 28)
+INK_800 = (32, 54, 42)
+INK_700 = (54, 83, 68)
+INK_500 = (96, 116, 104)
+INK_300 = (170, 183, 174)
 WHITE = (255, 255, 255)
 
 SUPERSAMPLE = 4  # draw at 4x then downsample with Lanczos
 
 
-def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Resolve a serif-ish font, falling back to PIL defaults on any host."""
+def _font(size: int, bold: bool = False, mono: bool = False) -> ImageFont.FreeTypeFont:
+    """Resolve a precise UI font, falling back to PIL defaults on any host."""
     size = max(8, int(size))
-    candidates = [
-        "C:\\Windows\\Fonts\\georgiab.ttf" if bold else "C:\\Windows\\Fonts\\georgia.ttf",
-        "C:\\Windows\\Fonts\\timesbd.ttf" if bold else "C:\\Windows\\Fonts\\times.ttf",
-        "C:\\Windows\\Fonts\\segoeuib.ttf" if bold else "C:\\Windows\\Fonts\\segoeui.ttf",
-        "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf" if bold
-        else "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
-    ]
+    if mono:
+        candidates = [
+            "C:\\Windows\\Fonts\\CascadiaMono.ttf",
+            "C:\\Windows\\Fonts\\CascadiaCode.ttf",
+            "C:\\Windows\\Fonts\\consola.ttf",
+            "/System/Library/Fonts/Monaco.ttf",
+        ]
+    else:
+        candidates = [
+            "C:\\Windows\\Fonts\\aptos-bold.ttf" if bold else "C:\\Windows\\Fonts\\aptos.ttf",
+            "C:\\Windows\\Fonts\\segoeuib.ttf" if bold else "C:\\Windows\\Fonts\\segoeui.ttf",
+            "C:\\Windows\\Fonts\\arialbd.ttf" if bold else "C:\\Windows\\Fonts\\arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold
+            else "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ]
     for path in candidates:
         try:
             return ImageFont.truetype(path, size)
@@ -214,7 +224,7 @@ def draw_brand_helix(draw, cx, cy, size, color, width):
 
 
 def draw_brand_tile(draw, cx, cy, size, tile_color, glyph_color, radius_frac=0.28):
-    """Draw the app's clay rounded-tile logo with a white DNA helix inside."""
+    """Draw the app's green rounded-tile logo with a white DNA helix inside."""
     half = size // 2
     box = [cx - half, cy - half, cx + half, cy + half]
     draw.rounded_rectangle(box, radius=int(size * radius_frac), fill=tile_color)
@@ -250,39 +260,43 @@ def _version_text():
 def render_sidebar(path: Path) -> None:
     """NSIS sidebar (welcome/finish page). 164 x 314."""
     W, H = 164, 314
-    img, draw, sc = _canvas(W, H, CREAM_50)
+    img, draw, sc = _canvas(W, H, INK_900)
 
-    # Right-side clay accent panel.
-    panel_w = 30 * sc
-    draw.rectangle([W * sc - panel_w, 0, W * sc, H * sc], fill=CLAY_500)
-
-    # DNA helix as the hero life-science motif, running down the page.
-    draw_dna_helix(
-        draw,
-        x0=0, y0=int(60 * sc), x1=0, y1=int(258 * sc),
-        color_a=CLAY_400, color_b=CLAY_600,
-        turns=5, radius=int(26 * sc), rungs=12,
+    draw.rectangle([0, 0, W * sc, 4 * sc], fill=CLAY_500)
+    draw.rounded_rectangle(
+        [14 * sc, 18 * sc, 150 * sc, 98 * sc],
+        radius=10 * sc,
+        fill=INK_800,
+        outline=_alpha(CLAY_400, 180),
+        width=1 * sc,
     )
+    draw_brand_tile(draw, int(42 * sc), int(58 * sc), int(44 * sc), CLAY_500, WHITE)
+    draw.text((72 * sc, 38 * sc), "Science", font=_font(18 * sc, bold=True), fill=CREAM_50)
+    draw.text((72 * sc, 62 * sc), "Workbench", font=_font(13 * sc), fill=CREAM_300)
 
-    # Small molecule network near the bottom for layering.
-    draw_molecule_network(
-        draw,
-        cx=int(72 * sc), cy=int(278 * sc), radius=int(22 * sc),
-        node_color=TEAL_500, line_color=TEAL_300, n=7, seed=3,
-    )
+    # Precision lanes: thin instrument-like readouts instead of decorative art.
+    lanes = [
+        ("PRIVATE", "local data"),
+        ("AGENTS", "modules"),
+        ("OUTPUT", "artifacts"),
+    ]
+    y = 128
+    for label, value in lanes:
+        draw.rounded_rectangle(
+            [18 * sc, y * sc, 146 * sc, (y + 34) * sc],
+            radius=7 * sc,
+            fill=INK_800,
+            outline=_alpha(CREAM_300, 72),
+            width=1 * sc,
+        )
+        draw.ellipse([28 * sc, (y + 12) * sc, 36 * sc, (y + 20) * sc], fill=CLAY_400)
+        draw.text((46 * sc, (y + 8) * sc), label, font=_font(9 * sc, bold=True, mono=True), fill=CLAY_300)
+        draw.text((46 * sc, (y + 20) * sc), value, font=_font(10 * sc), fill=CREAM_200)
+        y += 42
 
-    # Top brand block: logo + wordmark.
-    _rounded_rect_path(
-        draw,
-        [16 * sc, 20 * sc, W * sc - panel_w - 16 * sc, 84 * sc],
-        radius=12 * sc, fill=CLAY_50, outline=CLAY_300, width=2,
-    )
-    draw_brand_tile(draw, int(40 * sc), int(52 * sc), int(44 * sc), CLAY_500, WHITE)
-    _center_text(draw, "Science", _font(22 * sc, bold=True), int(102 * sc), int(42 * sc), INK_900)
-    _center_text(draw, "Workbench", _font(14 * sc), int(102 * sc), int(66 * sc), CLAY_600)
-
-    # Version mark at the bottom.
-    _center_text(draw, _version_text(), _font(12 * sc), int((W * sc - panel_w) // 2), int(296 * sc), INK_300)
+    for yy in (266, 274, 282):
+        draw.line([(20 * sc, yy * sc), (112 * sc, yy * sc)], fill=_alpha(CREAM_300, 58), width=1 * sc)
+    _center_text(draw, _version_text(), _font(12 * sc, mono=True), int(82 * sc), int(298 * sc), CREAM_300)
 
     _finalize(img, W, H).save(path, "BMP")
     print(f"wrote {path} ({W}x{H})")
@@ -293,51 +307,50 @@ def render_msi_dialog(path: Path) -> None:
     W, H = 493, 312
     img, draw, sc = _canvas(W, H, CREAM_50)
 
-    # Left brand panel.
-    panel_w = 196
-    draw.rectangle([0, 0, panel_w * sc, H * sc], fill=CLAY_50)
-    draw.line([(panel_w * sc, 0), (panel_w * sc, H * sc)], fill=CREAM_300, width=2 * sc)
+    panel_w = 184
+    draw.rectangle([0, 0, panel_w * sc, H * sc], fill=INK_900)
+    draw.rectangle([0, 0, W * sc, 5 * sc], fill=CLAY_500)
+    draw.line([(panel_w * sc, 0), (panel_w * sc, H * sc)], fill=CLAY_500, width=1 * sc)
 
-    # DNA helix inside the left panel.
-    draw_dna_helix(
-        draw,
-        x0=0, y0=int(132 * sc), x1=0, y1=int(268 * sc),
-        color_a=CLAY_400, color_b=CLAY_600,
-        turns=4, radius=int(34 * sc), rungs=12,
+    draw_brand_tile(draw, int(58 * sc), int(58 * sc), int(66 * sc), CLAY_500, WHITE)
+    draw.text((28 * sc, 110 * sc), "Science", font=_font(30 * sc, bold=True), fill=CREAM_50)
+    draw.text((28 * sc, 146 * sc), "Workbench", font=_font(20 * sc), fill=CREAM_300)
+    draw.text((28 * sc, 184 * sc), "LOCAL-FIRST", font=_font(10 * sc, bold=True, mono=True), fill=CLAY_300)
+    draw.text((28 * sc, 202 * sc), "research system", font=_font(14 * sc), fill=CREAM_200)
+
+    for yy in (244, 256, 268):
+        draw.line([(28 * sc, yy * sc), (142 * sc, yy * sc)], fill=_alpha(CREAM_300, 58), width=1 * sc)
+    draw.text((28 * sc, 284 * sc), _version_text(), font=_font(12 * sc, mono=True), fill=CREAM_300)
+
+    rx = (panel_w + 34) * sc
+    draw.rounded_rectangle(
+        [rx, 34 * sc, (W - 34) * sc, 106 * sc],
+        radius=11 * sc,
+        fill=WHITE,
+        outline=CREAM_300,
+        width=1 * sc,
     )
+    draw.text((rx + 18 * sc, 52 * sc), "Install Science Workbench", font=_font(19 * sc, bold=True), fill=INK_900)
+    draw.text((rx + 18 * sc, 78 * sc), "Private desktop AI for scientific work.", font=_font(12 * sc), fill=INK_500)
 
-    # Logo at the top of the left panel.
-    draw_brand_tile(draw, int(panel_w // 2 * sc), int(64 * sc), int(72 * sc), CLAY_500, WHITE)
-    _center_text(draw, "Science", _font(34 * sc, bold=True), int(panel_w // 2 * sc), int(118 * sc), INK_900)
-    _center_text(draw, "Workbench", _font(22 * sc), int(panel_w // 2 * sc), int(150 * sc), CLAY_600)
-    _center_text(draw, _version_text(), _font(13 * sc), int(panel_w // 2 * sc), int(286 * sc), INK_300)
-
-    # Right copy area.
-    rx = (panel_w + 30) * sc
-    # A small molecular network decorating the right top.
-    draw_molecule_network(
-        draw,
-        cx=int((W - 60) * sc), cy=int(56 * sc), radius=int(34 * sc),
-        node_color=CLAY_500, line_color=CLAY_300, n=10, seed=11,
-    )
-    draw.ellipse([int((W - 96) * sc), int(40 * sc), int((W - 24) * sc), int(112 * sc)],
-                 outline=_alpha(TEAL_300, 140), width=3)
-
-    draw.text((rx, int(170 * sc)), "Welcome", font=_font(30 * sc, bold=True), fill=INK_900)
-    draw.text((rx, int(214 * sc)), "A local-first desktop AI workbench", font=_font(16 * sc), fill=INK_500)
-    draw.text((rx, int(238 * sc)), "for life-science research.", font=_font(16 * sc), fill=INK_500)
-
-    bullets = [
-        "Private: all data stays on this machine.",
-        "Chat, literature, omics analysis, protocols.",
-        "Document drafting with one-click review.",
-        "Modules, HPC remote jobs, and more.",
+    rows = [
+        ("PRIVATE DATA", "Projects stay on this machine."),
+        ("AGENT MODULES", "Chat, design, omics, protocol, review, HPC."),
+        ("TRACEABLE OUTPUTS", "Figures, tables, scripts, documents."),
     ]
-    by = 264
-    for ln in bullets:
-        draw.ellipse([rx, int((by + 4) * sc), int((rx + 8 * sc)), int((by + 12) * sc)], fill=CLAY_500)
-        draw.text((int((rx + 16 * sc)), int(by * sc)), ln, font=_font(13 * sc), fill=INK_500)
-        by += 11
+    y = 134
+    for label, body in rows:
+        draw.rounded_rectangle(
+            [rx, y * sc, (W - 34) * sc, (y + 42) * sc],
+            radius=9 * sc,
+            fill=CLAY_50,
+            outline=CREAM_300,
+            width=1 * sc,
+        )
+        draw.ellipse([int(rx + 14 * sc), (y + 15) * sc, int(rx + 24 * sc), (y + 25) * sc], fill=TEAL_500)
+        draw.text((int(rx + 36 * sc), (y + 8) * sc), label, font=_font(10 * sc, bold=True, mono=True), fill=CLAY_600)
+        draw.text((int(rx + 36 * sc), (y + 23) * sc), body, font=_font(11 * sc), fill=INK_700)
+        y += 50
 
     _finalize(img, W, H).save(path, "BMP")
     print(f"wrote {path} ({W}x{H})")
@@ -352,7 +365,7 @@ def render_icon(path: Path) -> None:
     img = Image.new("RGBA", (W * sc, H * sc), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Rounded-square clay gradient background (matches the in-app BrandLogo).
+    # Rounded-square SYSU green background (matches the in-app BrandLogo).
     pad = 24 * sc
     _rounded_rect_path(
         draw,
@@ -379,9 +392,11 @@ def render_icon_ico(png_path: Path, ico_path: Path) -> None:
 
 def main() -> None:
     out_dir = Path(__file__).resolve().parent
+    frontend_public = out_dir.parent.parent / "frontend" / "public"
     render_sidebar(out_dir / "nsis-sidebar.bmp")
     render_msi_dialog(out_dir / "msi-dialog.bmp")
     render_icon(out_dir / "icon.png")
+    render_icon(frontend_public / "icon.png")
     render_icon_ico(out_dir / "icon.png", out_dir / "icon.ico")
     # NOTE: no NSIS headerImage is produced. We removed it because NSIS extracts
     # the header bitmap into %TEMP% at install time and AV/Defender can lock it,
