@@ -102,12 +102,13 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://open.bigmodel.cn/api/paas/v4/"
     llm_api_key: str = ""
     llm_model: str = "glm-4-plus"
-    reasoning_effort: str = "auto"
+    reasoning_effort: str = "max"
 
     sandbox_timeout: int = 120
     sandbox_memory_mb: int = 4096
     python_executable: str = "python"
     r_executable: str = "Rscript"
+    chimerax_executable: str = ""
 
     host: str = "127.0.0.1"
     port: int = 8000
@@ -135,6 +136,7 @@ def reload_settings() -> None:
         settings.reasoning_effort = fresh.reasoning_effort
         settings.python_executable = fresh.python_executable
         settings.r_executable = fresh.r_executable
+        settings.chimerax_executable = fresh.chimerax_executable
         settings.sandbox_timeout = fresh.sandbox_timeout
     except Exception:
         pass

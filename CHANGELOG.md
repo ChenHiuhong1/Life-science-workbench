@@ -3,7 +3,7 @@
 All notable changes to Science Workbench are documented here.
 本项目的重要变更记录于此。
 
-## [Unreleased] — branch `xiaochen-claude`
+## [Unreleased] — branch `feat/workbench-overhaul`
 
 Focus: fix the conversation crash, tighten module isolation, refresh the visual
 identity, and bring streaming + workspace behavior in line with Claude Code /
@@ -22,6 +22,18 @@ Codex desktop clients.
   - Regression test: `backend/tests/test_llm_none_safety.py` (4/4 passing).
 
 ### Changed — 隔离与架构
+- **Retired the standalone Literature agent.** Literature search remains available
+  as the `search_literature` tool inside Chat, Study Design, Bio-Analysis,
+  Protocol, Reviewer, and Document sessions, so evidence stays attached to the
+  agent that requested it. Legacy `literature` sessions are safely normalized to
+  Chat in the UI.
+  - `backend/core/agent_registry.py`, `frontend/src/store/index.ts`,
+    `frontend/src/components/Workspace.tsx`, `frontend/src/components/layout/Sidebar.tsx`
+- **Agent output contracts.** Added a repository-shipped `agent-output-contracts`
+  skill and loaded it globally, with per-agent deliverables, tool routing,
+  final handoff, and no-hidden-handoff rules.
+  - `backend/bundled_skills/agent-output-contracts/SKILL.md`,
+    `backend/core/agent_registry.py`, `backend/knowledge/agents/module_contracts.md`
 - **Strict module-level isolation.** `execute_tool_call` never raises: any tool
   failure is caught and returned as a *session-scoped* error string, and a tool
   call can no longer redirect its artifacts to another session (`session_id` is

@@ -24,6 +24,7 @@ The workbench may create project-local agent folders, but the structure must be 
     harness/
   knowledge/
     bioinformatics/
+    structural-biology/
     protocols/
     literature/
     research-design/

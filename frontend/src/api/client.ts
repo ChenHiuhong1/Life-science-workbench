@@ -1,4 +1,4 @@
-import type { Project, SessionInfo, Message, Artifact, AgentInfo, Paper } from '@/types';
+import type { Project, ProjectServerFields, SessionInfo, Message, Artifact, AgentInfo, ChatAttachment, SkillInfo } from '@/types';
 
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN || 'http://127.0.0.1:8000').replace(/\/$/, '');
 export const API_BASE = `${API_ORIGIN}/api`;
@@ -39,10 +39,41 @@ async function jdel(url: string) {
 export const api = {
   listProjects: (archived?: boolean): Promise<Project[]> =>
     jget(`${BASE}/projects${archived !== undefined ? `?archived=${archived}` : ''}`),
-  createProject: (name: string, description = '', localPath = '') =>
-    jpost(`${BASE}/projects`, { name, description, local_path: localPath }),
-  updateProject: (id: string, data: { name: string; description?: string; local_path?: string }) =>
-    jput(`${BASE}/projects/${id}`, data),
+  createProject: (
+    name: string,
+    description = '',
+    localPath = '',
+    server?: Partial<ProjectServerFields>,
+  ) =>
+    jpost(`${BASE}/projects`, {
+      name,
+      description,
+      local_path: localPath,
+      server_host: server?.server_host ?? '',
+      server_port: server?.server_port ?? 22,
+      server_username: server?.server_username ?? '',
+      server_password: server?.server_password ?? '',
+      server_workdir: server?.server_workdir ?? '',
+    }),
+  updateProject: (
+    id: string,
+    data: {
+      name: string;
+      description?: string;
+      local_path?: string;
+      server?: Partial<ProjectServerFields>;
+    },
+  ) =>
+    jput(`${BASE}/projects/${id}`, {
+      name: data.name,
+      description: data.description ?? '',
+      local_path: data.local_path ?? '',
+      server_host: data.server?.server_host ?? '',
+      server_port: data.server?.server_port ?? 22,
+      server_username: data.server?.server_username ?? '',
+      server_password: data.server?.server_password ?? '',
+      server_workdir: data.server?.server_workdir ?? '',
+    }),
   projectWorkspace: (id: string) =>
     jget(`${BASE}/projects/${id}/workspace`) as Promise<{ project_id: string; root: string; artifacts_dir: string; bound: boolean }>,
   deleteProject: (id: string) => jdel(`${BASE}/projects/${id}`),
@@ -87,6 +118,16 @@ export const api = {
   getMessages: (sid: string): Promise<Message[]> => jget(`${BASE}/sessions/${sid}/messages`),
 
   listAgents: (): Promise<AgentInfo[]> => jget(`${BASE}/chat/agents`),
+  listSkills: (): Promise<SkillInfo[]> => jget(`${BASE}/chat/skills`),
+  uploadAttachments: async (sessionId: string, projectPath: string, files: File[]): Promise<{ files: ChatAttachment[] }> => {
+    const body = new FormData();
+    body.append('session_id', sessionId);
+    body.append('project_path', projectPath || '');
+    files.forEach((file) => body.append('files', file));
+    const response = await fetch(`${BASE}/chat/attachments`, { method: 'POST', body });
+    if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+    return response.json();
+  },
 
   chatStream: (req: {
     session_id: string;
@@ -94,6 +135,7 @@ export const api = {
     messages: { role: string; content: string }[];
     language: string;
     project_path?: string;
+    reasoning_effort?: string;
   }, signal?: AbortSignal) =>
     fetch(`${BASE}/chat/stream`, {
       method: 'POST',
@@ -115,22 +157,6 @@ export const api = {
       signal,
     }),
 
-  searchLiterature: (query: string, sources?: string[], limit = 8) =>
-    jpost(`${BASE}/literature/search`, { query, sources, limit }).then(
-      (data: any) => ({ papers: data.papers as Paper[], failed: (data.failed || []) as string[] })
-    ),
-  starLiterature: (paper: Paper) =>
-    jpost(`${BASE}/literature/star`, {
-      doi: paper.doi,
-      title: paper.title,
-      authors: paper.authors,
-      journal: paper.journal,
-      year: paper.year,
-      abstract: paper.abstract,
-      source: paper.source,
-      url: paper.url,
-    }),
-
   listArtifacts: (sid: string): Promise<Artifact[]> =>
     jget(`${BASE}/artifacts/session/${sid}`),
   artifactFileUrl: (path: string, projectPath = '') =>
@@ -138,13 +164,34 @@ export const api = {
     (projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : ''),
   artifactOpenFolder: (path: string, projectPath = '') =>
     jpost(`${BASE}/artifacts/open-folder`, { path, project_path: projectPath }),
+  artifactOpenChimeraX: (path: string, projectPath = '') =>
+    jpost(`${BASE}/artifacts/open-chimerax`, { path, project_path: projectPath }) as Promise<{ ok: boolean; error?: string; path?: string; executable?: string }>,
 
   saveSettings: (settings: {
     llm_base_url: string; llm_api_key?: string; llm_model: string;
-    reasoning_effort?: 'auto' | 'low' | 'medium' | 'high';
-    python_executable?: string; r_executable?: string; sandbox_timeout?: number;
+    reasoning_effort?: 'none' | 'high' | 'max';
+    python_executable?: string; r_executable?: string; chimerax_executable?: string; sandbox_timeout?: number;
   }) => jpost(`${BASE}/settings`, settings),
+  clearApiKey: () => jdel(`${BASE}/settings/api-key`),
   getSettings: () => jget(`${BASE}/settings`),
+  getMemory: (projectPath = '') =>
+    jget(`${BASE}/settings/memory${projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : ''}`) as Promise<{
+      exists: boolean; target_path: string; active_paths: string[]; chars: number; content: string;
+    }>,
+  saveMemory: (projectPath: string, content: string) =>
+    jpost(`${BASE}/settings/memory`, { project_path: projectPath, content }),
+  getModels: () => jget(`${BASE}/settings/models`) as Promise<{
+    current: string;
+    current_context_window: number;
+    current_max_output_tokens: number;
+    current_supports_reasoning_effort: boolean;
+    current_supports_long_context: boolean;
+    models: Array<{
+      id: string; label: string; context_window: number; max_output_tokens: number;
+      supports_reasoning_effort: boolean; supports_long_context: boolean;
+      long_context_window: number | null; long_context_suffix: string | null;
+    }>;
+  }>,
 
   health: () => jget(`${BASE}/health`),
 };

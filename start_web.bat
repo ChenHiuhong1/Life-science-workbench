@@ -34,9 +34,29 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist ".venv\Scripts\python.exe" (
+set "VENV_DIR=.venv"
+if exist "%VENV_DIR%\Scripts\python.exe" if not exist "%VENV_DIR%\pyvenv.cfg" (
+  echo [WARN] %VENV_DIR% exists but is incomplete ^(missing pyvenv.cfg^).
+  echo        Leaving it untouched and using .venv-dev for this run.
+  set "VENV_DIR=.venv-dev"
+)
+if exist "%VENV_DIR%\Scripts\python.exe" (
+  "%VENV_DIR%\Scripts\python.exe" -c "import sys; print(sys.executable)" >nul 2>nul
+  if errorlevel 1 (
+    echo [WARN] %VENV_DIR% exists but Python cannot start.
+    if /I "%VENV_DIR%"==".venv-dev" (
+      echo        Leaving it untouched and using .venv-dev-fresh for this run.
+      set "VENV_DIR=.venv-dev-fresh"
+    ) else (
+      echo        Leaving it untouched and using .venv-dev for this run.
+      set "VENV_DIR=.venv-dev"
+    )
+  )
+)
+
+if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo [1/4] Creating Python virtual environment...
-  python -m venv .venv
+  python -m venv "%VENV_DIR%"
   if errorlevel 1 (
     pause
     exit /b 1
@@ -44,7 +64,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo [2/4] Installing backend dependencies...
-".venv\Scripts\python.exe" -m pip install -q -r backend\requirements.txt pydantic-settings loguru
+"%VENV_DIR%\Scripts\python.exe" -m pip install -q -r backend\requirements.txt pydantic-settings loguru
 if errorlevel 1 (
   pause
   exit /b 1
@@ -53,7 +73,7 @@ if errorlevel 1 (
 powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8000/api/health' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
 if errorlevel 1 (
   echo [3/4] Starting backend on http://127.0.0.1:8000 ...
-  start "Science Workbench Backend" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --log-level warning"
+  start "Science Workbench Backend" cmd /k ""%VENV_DIR%\Scripts\python.exe" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --log-level warning"
   timeout /t 4 /nobreak >nul
 ) else (
   echo [3/4] Backend is already running on http://127.0.0.1:8000.

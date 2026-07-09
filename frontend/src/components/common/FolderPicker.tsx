@@ -53,17 +53,17 @@ export function FolderPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/25 backdrop-blur-sm" onClick={onCancel}>
       <div
-        className="w-full max-w-lg bg-white rounded-lg shadow-lg border border-cream-300 flex flex-col max-h-[80vh]"
+        className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-cream-50 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 py-3 border-b border-cream-300 flex items-center gap-2">
+        <div className="flex items-center gap-2 border-b border-cream-200 bg-cream-100 px-4 py-3">
           <Folder size={16} className="text-clay-500" />
-          <span className="text-sm font-medium">Select Folder</span>
+          <span className="text-sm font-semibold text-ink-900">Select Folder</span>
         </div>
 
-        <div className="px-3 py-2 border-b border-cream-300 flex items-center gap-1.5 bg-cream-50">
+        <div className="px-3 py-2 border-b border-cream-200 flex items-center gap-1.5 bg-cream-50">
           <button className="text-ink-400 hover:text-ink-700 p-1 rounded hover:bg-cream-100" onClick={() => load(home)} title="Home">
             <Home size={13} />
           </button>
@@ -74,7 +74,7 @@ export function FolderPicker({
           >
             <ArrowUp size={13} />
           </button>
-          <div className="flex-1 text-xs text-ink-500 truncate font-mono px-1.5 py-1 bg-white border border-cream-300 rounded">
+          <div className="flex-1 truncate rounded-[8px] border border-cream-300 bg-cream-50 px-1.5 py-1 font-mono text-xs text-ink-600">
             {cwd || 'No folder selected'}
           </div>
         </div>
@@ -92,7 +92,7 @@ export function FolderPicker({
           {entries.map((entry) => (
             <button
               key={entry.path}
-              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm hover:bg-cream-100 text-left"
+              className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm hover:bg-cream-100"
               onClick={() => load(entry.path)}
             >
               {cwd === entry.path ? (
@@ -107,12 +107,12 @@ export function FolderPicker({
         </div>
 
         {roots.length > 1 && (
-          <div className="px-3 py-2 border-t border-cream-300 flex flex-wrap gap-1">
+          <div className="px-3 py-2 border-t border-cream-200 flex flex-wrap gap-1">
             {roots.map((root) => (
               <button
                 key={root}
                 onClick={() => load(root)}
-                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-cream-300 text-ink-500 hover:bg-cream-100"
+                className="flex items-center gap-1 rounded-[8px] bg-cream-100 px-2 py-0.5 text-[11px] text-ink-600 hover:bg-cream-150"
               >
                 <HardDrive size={10} /> {root.replace('\\', '')}
               </button>
@@ -120,7 +120,7 @@ export function FolderPicker({
           </div>
         )}
 
-        <div className="px-4 py-3 border-t border-cream-300 flex items-center justify-between bg-cream-50">
+        <div className="flex items-center justify-between border-t border-cream-200 bg-cream-100 px-4 py-3">
           <span className="text-xs text-ink-300 truncate flex-1 mr-2 font-mono">{cwd || 'No folder selected'}</span>
           <div className="flex gap-2">
             <button className="btn-ghost text-sm" onClick={onCancel}>Cancel</button>

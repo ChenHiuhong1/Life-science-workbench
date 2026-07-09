@@ -20,6 +20,13 @@ class ProjectIn(BaseModel):
     name: str
     description: str = ""
     local_path: str = ""
+    # Optional remote execution server (bio-analysis / structure-bio). Empty
+    # host means "run locally" — the default and the historical behavior.
+    server_host: str = ""
+    server_port: int = 22
+    server_username: str = ""
+    server_password: str = ""
+    server_workdir: str = ""
 
 
 class ProjectOut(BaseModel):
@@ -29,6 +36,13 @@ class ProjectOut(BaseModel):
     local_path: str
     archived: bool
     session_count: int
+    # Server fields are echoed back so the edit modal can prefill them. The
+    # password is masked (present/absent) rather than returned in cleartext.
+    server_host: str = ""
+    server_port: int = 22
+    server_username: str = ""
+    has_server_password: bool = False
+    server_workdir: str = ""
 
     class Config:
         from_attributes = True
@@ -42,6 +56,11 @@ def _to_out(project: Project, db: Session) -> ProjectOut:
         local_path=project.local_path or "",
         archived=bool(project.archived),
         session_count=db.query(SessionModel).filter(SessionModel.project_id == project.id).count(),
+        server_host=project.server_host or "",
+        server_port=int(project.server_port or 22),
+        server_username=project.server_username or "",
+        has_server_password=bool(project.server_password),
+        server_workdir=project.server_workdir or "",
     )
 
 
@@ -94,6 +113,13 @@ def create_project(inp: ProjectIn, db: Session = Depends(get_db)):
         name=inp.name,
         description=inp.description,
         local_path=resolved,
+        server_host=(inp.server_host or ""),
+        server_port=int(inp.server_port or 22),
+        server_username=(inp.server_username or ""),
+        # Only store a password when a host is configured; otherwise the
+        # project runs locally and credentials are meaningless.
+        server_password=(inp.server_password or "") if (inp.server_host or "").strip() else "",
+        server_workdir=(inp.server_workdir or ""),
     )
     db.add(project)
     db.commit()
@@ -112,6 +138,19 @@ def update_project(pid: str, inp: ProjectIn, db: Session = Depends(get_db)):
         project.local_path = _ensure_project_folder(inp.local_path)
     else:
         project.local_path = inp.local_path or ""
+    # Server fields. A cleared host disables remote execution (and clears the
+    # other server fields too). The password follows a keep-on-empty rule so
+    # editing the project name doesn't silently wipe stored credentials.
+    project.server_host = (inp.server_host or "")
+    project.server_port = int(inp.server_port or 22)
+    project.server_username = (inp.server_username or "")
+    project.server_workdir = (inp.server_workdir or "")
+    if not (inp.server_host or "").strip():
+        # No host → run locally. Drop any previously stored credentials.
+        project.server_password = ""
+    elif (inp.server_password or "").strip():
+        project.server_password = inp.server_password
+    # else: host set, password blank on the edit form → keep existing password.
     db.commit()
     return _to_out(project, db)
 

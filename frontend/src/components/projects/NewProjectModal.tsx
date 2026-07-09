@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, FolderOpen, Plus, Check } from 'lucide-react';
+import { X, FolderOpen, Plus, Check, ChevronDown, Server, Cpu } from 'lucide-react';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
@@ -12,6 +12,8 @@ interface Props {
   editProject?: Project | null;
 }
 
+const DEFAULT_PORT = 22;
+
 export function NewProjectModal({ onClose, editProject }: Props) {
   const t = useI18n((s) => s.t);
   const createProject = useStore((s) => s.createProject);
@@ -23,6 +25,18 @@ export function NewProjectModal({ onClose, editProject }: Props) {
   const [folderTouched, setFolderTouched] = useState(isEdit);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Optional remote execution server. Empty host = run locally (default).
+  const [serverHost, setServerHost] = useState(editProject?.server_host || '');
+  const [serverPort, setServerPort] = useState<number>(editProject?.server_port || DEFAULT_PORT);
+  const [serverUsername, setServerUsername] = useState(editProject?.server_username || '');
+  const [serverPassword, setServerPassword] = useState('');
+  const [serverWorkdir, setServerWorkdir] = useState(editProject?.server_workdir || '');
+  const [serverOpen, setServerOpen] = useState<boolean>(
+    // On edit, auto-expand the server section if a host is already configured.
+    !!(editProject?.server_host),
+  );
+  const hadPassword = !!editProject?.has_server_password;
 
   useEffect(() => {
     api.fsHome()
@@ -50,10 +64,32 @@ export function NewProjectModal({ onClose, editProject }: Props) {
     if (!name.trim() || !folder.trim()) return;
     setSaving(true);
     try {
+      // A server is "configured" only when a host is present. Empty host →
+      // run locally, and we send empty server fields so the backend clears
+      // any previously stored credentials on edit.
+      const host = serverHost.trim();
+      const server =
+        host && serverOpen
+          ? {
+              server_host: host,
+              server_port: serverPort || DEFAULT_PORT,
+              server_username: serverUsername.trim(),
+              // On edit, a blank password keeps the existing one (keep-on-empty).
+              // On create, blank simply means "no password stored".
+              server_password: serverPassword,
+              server_workdir: serverWorkdir.trim(),
+            }
+          : {
+              server_host: '',
+              server_port: DEFAULT_PORT,
+              server_username: '',
+              server_password: '',
+              server_workdir: '',
+            };
       if (isEdit && editProject) {
-        await updateProject(editProject.id, { name: name.trim(), local_path: folder.trim() });
+        await updateProject(editProject.id, { name: name.trim(), local_path: folder.trim(), server });
       } else {
-        await createProject(name.trim(), folder);
+        await createProject(name.trim(), folder, server);
       }
       onClose();
     } finally {
@@ -62,23 +98,23 @@ export function NewProjectModal({ onClose, editProject }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/25 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-md bg-white rounded-lg shadow-lg border border-cream-300"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-cream-50 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-cream-300">
-          <h2 className="text-base font-medium">
+        <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
+          <h2 className="font-serif text-lg font-semibold tracking-[-0.015em] text-ink-900">
             {isEdit ? t('newproject.edit_title') : t('newproject.title')}
           </h2>
-          <button className="text-ink-300 hover:text-ink-700" onClick={onClose} title="Close">
+          <button className="text-ink-400 hover:text-ink-700" onClick={onClose} title="Close">
             <X size={18} />
           </button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs text-ink-500 mb-1">{t('newproject.name')}</label>
+            <label className="block text-xs text-ink-600 mb-1">{t('newproject.name')}</label>
             <input
               autoFocus
               className="input"
@@ -90,11 +126,11 @@ export function NewProjectModal({ onClose, editProject }: Props) {
           </div>
 
           <div>
-            <label className="block text-xs text-ink-500 mb-1">{t('newproject.folder')}</label>
+            <label className="block text-xs text-ink-600 mb-1">{t('newproject.folder')}</label>
             <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-[8px] border border-cream-300 bg-cream-50 min-w-0">
-                <FolderOpen size={14} className="text-clay-400 shrink-0" />
-                <span className={`text-sm truncate ${folder ? 'text-ink-900' : 'text-ink-300'}`} title={folder}>
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-cream-100 px-3 py-2">
+                <FolderOpen size={14} className="text-clay-500 shrink-0" />
+                <span className={`text-sm truncate ${folder ? 'text-ink-900' : 'text-ink-400'}`} title={folder}>
                   {folder || t('newproject.empty')}
                 </span>
               </div>
@@ -102,15 +138,99 @@ export function NewProjectModal({ onClose, editProject }: Props) {
                 {t('newproject.browse')}
               </button>
             </div>
-            <p className="text-[11px] text-ink-300 mt-1">
+            <p className="text-[11px] text-ink-500 mt-1">
               {isEdit
                 ? t('newproject.folder_hint_edit')
                 : t('newproject.folder_hint_new')}
             </p>
           </div>
+
+          {/* Optional remote execution server (bio-analysis / structure-bio).
+              Collapsed by default on create; empty host runs locally. */}
+          <div className="rounded-[10px] bg-cream-100">
+            <button
+              type="button"
+              onClick={() => setServerOpen((v) => !v)}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+            >
+              <ChevronDown
+                size={14}
+                className={`shrink-0 text-ink-400 transition-transform ${serverOpen ? '' : '-rotate-90'}`}
+              />
+              {serverHost.trim() ? (
+                <Server size={14} className="shrink-0 text-clay-500" />
+              ) : (
+                <Cpu size={14} className="shrink-0 text-ink-500" />
+              )}
+              <span className="text-xs font-medium text-ink-700">
+                {serverHost.trim() ? `Remote · ${serverHost.trim()}` : 'Execution server (optional)'}
+              </span>
+              <span className="ml-auto text-[10px] text-ink-500">
+                {serverHost.trim() ? 'remote' : 'local'}
+              </span>
+            </button>
+
+            {serverOpen && (
+              <div className="space-y-3 border-t border-cream-200 px-3 py-3">
+                <p className="text-[11px] leading-relaxed text-ink-500">
+                  For bio-analysis and structure-bio workloads, run code on a remote Linux server over SSH instead of the local sandbox. Leave the host blank to run locally.
+                </p>
+                <div className="grid grid-cols-[1fr_5rem] gap-2">
+                  <div>
+                    <label className="block text-[11px] text-ink-600 mb-1">Host (IP)</label>
+                    <input
+                      className="input"
+                      placeholder="10.0.0.5"
+                      value={serverHost}
+                      onChange={(e) => setServerHost(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-ink-600 mb-1">Port</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={serverPort}
+                      onChange={(e) => setServerPort(Number(e.target.value) || DEFAULT_PORT)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-ink-600 mb-1">Username</label>
+                  <input
+                    className="input"
+                    placeholder="researcher"
+                    value={serverUsername}
+                    onChange={(e) => setServerUsername(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-ink-600 mb-1">
+                    Password {isEdit && hadPassword && <span className="text-ink-400">(leave blank to keep current)</span>}
+                  </label>
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder={isEdit && hadPassword ? '••••••• (unchanged)' : 'password'}
+                    value={serverPassword}
+                    onChange={(e) => setServerPassword(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-ink-600 mb-1">Working directory</label>
+                  <input
+                    className="input"
+                    placeholder="/home/researcher/work"
+                    value={serverWorkdir}
+                    onChange={(e) => setServerWorkdir(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-cream-300 bg-cream-50">
+        <div className="flex items-center justify-end gap-2 border-t border-cream-200 bg-cream-100 px-5 py-3.5">
           <button className="btn-ghost text-sm" onClick={onClose}>{t('common.cancel')}</button>
           <button
             className="btn-primary text-sm"

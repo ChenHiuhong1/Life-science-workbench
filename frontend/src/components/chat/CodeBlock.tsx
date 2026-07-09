@@ -85,33 +85,33 @@ export function CodeBlock({
   };
 
   return (
-    <div className="my-3 rounded-lg overflow-hidden border border-[#2A2A2A]">
-      <div className="flex items-center justify-between bg-[#2A2A2A] px-3 py-1.5">
-        <span className="text-[11px] font-mono text-[#888] uppercase tracking-wider">{language}</span>
+    <div className="my-3 overflow-hidden rounded-lg shadow-card">
+      <div className="flex items-center justify-between bg-ink-900 px-3 py-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-wider text-cream-100/70">{language}</span>
         <div className="flex items-center gap-1">
           {reviewable && (
             <button
               onClick={open && review ? () => setOpen((v) => !v) : runReview}
-              className="text-[#888] hover:text-white p-1 rounded hover:bg-[#3A3A3A] transition-colors"
+              className="rounded p-1 text-cream-100/70 transition-colors hover:bg-ink-800 hover:text-cream-50"
               title={reviewing ? 'Stop review' : 'Review code'}
             >
-              {reviewing ? <Loader2 size={12} className="animate-spin text-[#D97757]" /> : <ShieldCheck size={12} />}
+              {reviewing ? <Loader2 size={12} className="animate-spin text-clay-400" /> : <ShieldCheck size={12} />}
             </button>
           )}
           <button
             onClick={copy}
-            className="text-[#888] hover:text-white p-1 rounded hover:bg-[#3A3A3A] transition-colors"
+            className="rounded p-1 text-cream-100/70 transition-colors hover:bg-ink-800 hover:text-cream-50"
             title="Copy"
           >
             {copied ? <Check size={12} className="text-[#7CB66B]" /> : <Copy size={12} />}
           </button>
         </div>
       </div>
-      <pre className="bg-[#1E1E1E] text-[#E4E4E4] p-3.5 overflow-x-auto text-xs font-mono leading-relaxed">
+      <pre className="overflow-x-auto bg-ink-900 p-3.5 font-mono text-xs leading-relaxed text-cream-50">
         <code>{code}</code>
       </pre>
       {open && (reviewing || review || error) && (
-        <div className="border-t border-[#2A2A2A] bg-white p-3">
+        <div className="border-t border-cream-200 bg-cream-100 p-3">
           {error ? (
             <div className="flex items-start gap-2 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />

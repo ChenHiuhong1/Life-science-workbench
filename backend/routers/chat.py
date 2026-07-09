@@ -1,17 +1,23 @@
 """Chat routes with SSE streaming, persistence, and agent switching."""
 import asyncio
 import json
+import shutil
 import uuid
+from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..config import ARTIFACTS_DIR, reload_settings, settings
 from ..core.agent_registry import registry
 from ..core.llm import stream_chat
+from ..core.skill_commands import explicit_skill_block, parse_skill_command
+from ..core import skills_loader
+from ..core.executor import PROJECT_ARTIFACTS_SUBDIR
 from ..core.tools import select_triggered_tools, tools_for
 from ..db.database import get_db
 from ..db.models import Message, Project, Session as SessionModel
@@ -31,6 +37,9 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     language: str = "en"
     project_path: str = ""
+    # Per-message override of the thinking tier (none / high / max). Empty
+    # means "use the global setting from .env".
+    reasoning_effort: str = ""
 
 
 @router.post("/stream")
@@ -47,6 +56,18 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
     agent = registry.get(agent_key) or registry.get("chat")
     system_prompt = registry.build_system_prompt(agent.key)
     system_prompt += "\n\n" + _language_instruction(req.language)
+    system_prompt += "\n\n" + _runtime_identity_instruction()
+
+    # Inject AGENTS.md long-term memory. project_path is resolved below, but
+    # memory must be ready before the system prompt is used; resolve it the
+    # same way here (request value, else the bound project folder).
+    from ..core.memory import memory_block_for_prompt
+    mem_path = req.project_path or ""
+    if not mem_path and session and session.project_id:
+        project = db.query(Project).get(session.project_id)
+        if project and project.local_path:
+            mem_path = project.local_path
+    system_prompt += memory_block_for_prompt(mem_path)
 
     # Resolve the active workspace folder: prefer the request value, then fall back
     # to the project bound to this session so the executor/file operations follow
@@ -68,6 +89,22 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
         db.commit()
 
     latest_user_text = next((message["content"] for message in reversed(messages) if message["role"] == "user"), "")
+    skill_command = parse_skill_command(latest_user_text)
+    if skill_command:
+        if skill_command.kind in {"list", "install", "error"}:
+            if skill_command.installed:
+                registry.clear_prompt_cache()
+            return _direct_text_response(req.session_id, skill_command.message)
+        if skill_command.kind == "invoke":
+            block = explicit_skill_block(skill_command.skill_name)
+            if block:
+                system_prompt += "\n\n" + block
+            for message in reversed(messages):
+                if message["role"] == "user":
+                    message["content"] = skill_command.user_text or f"Use the `{skill_command.skill_name}` skill for this turn."
+                    latest_user_text = message["content"]
+                    break
+
     triggered_tool_keys = select_triggered_tools(agent.tools, latest_user_text, agent.key)
     tools = tools_for(triggered_tool_keys)
     logger.debug(
@@ -77,6 +114,15 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
 
     async def generate():
         assistant_buf = {"content": "", "tool_calls": [], "artifact_ids": []}
+        # Emit a meta event with the (possibly just-updated) session title so
+        # the frontend can refresh the sidebar entry live, instead of the user
+        # seeing "New Session" until they reload the project.
+        try:
+            refreshed = db.query(SessionModel).get(req.session_id)
+            if refreshed:
+                yield f'data: {json.dumps({"type": "meta", "session_id": req.session_id, "title": refreshed.title})}\n\n'
+        except Exception:
+            pass
         try:
             async for event in stream_chat(
                 messages=messages,
@@ -84,6 +130,8 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
                 system_prompt=system_prompt,
                 session_id=req.session_id,
                 project_path=project_path,
+                effort_override=req.reasoning_effort or "",
+                agent_key=agent.key,
             ):
                 if await request.is_disconnected():
                     logger.info(f"client disconnected; stopping stream for session {req.session_id}")
@@ -98,22 +146,52 @@ async def chat_stream(req: ChatRequest, request: Request, db: Session = Depends(
                 yield event
         except asyncio.CancelledError:
             logger.info(f"stream response cancelled for session {req.session_id}")
+            _persist_assistant(req.session_id, assistant_buf["content"])
             raise
         except Exception as exc:
             logger.exception("chat stream failed")
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
 
-        try:
-            db.add(Message(
-                session_id=req.session_id,
-                role="assistant",
-                content=assistant_buf["content"],
-            ))
-            db.commit()
-        except Exception:
-            db.rollback()
+        # Persist with a fresh session rather than the request-scoped one. The
+        # request-scoped SessionLocal is shared across many await points during
+        # streaming and SQLAlchemy Sessions are not concurrency-safe; using a
+        # dedicated session here keeps the post-stream write isolated and lets
+        # it succeed even if FastAPI is tearing the request down.
+        _persist_assistant(req.session_id, assistant_buf["content"])
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _direct_text_response(session_id: str, content: str) -> StreamingResponse:
+    """Return a no-model SSE response for local commands such as /skill list."""
+
+    async def generate():
+        yield f'data: {json.dumps({"type": "delta", "content": content}, ensure_ascii=False)}\n\n'
+        yield f'data: {json.dumps({"type": "done"}, ensure_ascii=False)}\n\n'
+
+    _persist_assistant(session_id, content)
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _persist_assistant(session_id: str, content: str) -> None:
+    """Persist the assistant turn in its own DB session, swallow failures.
+
+    A short/duplicate final newline or empty content is still persisted so the
+    conversation history stays coherent (an assistant turn was emitted), but
+    any DB error is contained: it never propagates into the (already-finishing)
+    stream and corrupt an unrelated session.
+    """
+    from ..db.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.add(Message(session_id=session_id, role="assistant", content=content or ""))
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(f"failed to persist assistant message for session {session_id}")
+    finally:
+        db.close()
 
 
 def _language_instruction(language: str) -> str:
@@ -123,6 +201,48 @@ def _language_instruction(language: str) -> str:
             "commands, and precise technical terms in English when that improves clarity."
         )
     return "Respond in English."
+
+
+def _runtime_identity_instruction() -> str:
+    reload_settings()
+    model_id = settings.llm_model or "unknown"
+    try:
+        from ..core.model_specs import get_model_spec
+        spec = get_model_spec(model_id)
+        model_label = spec.label
+        context_window = spec.context_window
+        max_output = spec.max_output_tokens
+    except Exception:
+        model_label = model_id
+        context_window = 0
+        max_output = 0
+    model_facts = (
+        f"- Registry label: `{model_label}`.\n"
+        f"- Registry context window: `{context_window}` tokens.\n"
+        f"- Registry max output: `{max_output}` tokens.\n"
+    )
+    identity_guard = (
+        "- If the user asks whether you are a specific model, answer yes only when that requested model matches "
+        "the configured model id or registry label above. If it does not match, answer no and state the configured model id above.\n"
+    )
+    if model_label == "GLM-5.2":
+        identity_guard += (
+            "- The configured model id resolves to GLM-5.2 for this request. "
+            "Do not say that GLM-5.2 does not exist, and do not say you cannot confirm the configured model.\n"
+        )
+    return (
+        "Runtime identity:\n"
+        f"- The current configured LLM model id for this Science Workbench request is `{model_id}`.\n"
+        f"{model_facts}"
+        "- Treat the configured model id above as the authoritative user-visible runtime identity for this app.\n"
+        "- If the user asks what model or AI you are, answer from this runtime configuration: "
+        "you are the active Science Workbench agent running on the configured model id above.\n"
+        "- Do not guess, inherit, or claim a different underlying model/provider name from training data or public-release memory. "
+        "Never say you are GLM-4 unless the configured model id above is actually a GLM-4 model.\n"
+        f"{identity_guard}"
+        "- If provider-side routing is opaque, say the app can verify only the configured model id, "
+        "not hidden provider internals."
+    )
 
 
 def _maybe_update_title(db: Session, session_id: str, messages: list):
@@ -148,6 +268,73 @@ def list_agents():
         }
         for agent in registry.list()
     ]
+
+
+@router.get("/skills")
+def list_skills():
+    return [
+        {
+            "name": item.get("name", ""),
+            "group": item.get("group", ""),
+            "description": item.get("description", ""),
+        }
+        for item in sorted(skills_loader.list_all(), key=lambda skill: skill.get("name", ""))
+    ]
+
+
+@router.post("/attachments")
+async def upload_attachments(
+    session_id: str = Form(...),
+    project_path: str = Form(""),
+    files: list[UploadFile] = File(...),
+):
+    """Save user-provided chat attachments into a session-scoped folder.
+
+    Attachments are source material, not generated artifacts. They are returned
+    as paths the agent can read, while the Artifact panel remains reserved for
+    generated previews.
+    """
+    if not session_id:
+        return {"files": []}
+    root = (Path(project_path).expanduser() / PROJECT_ARTIFACTS_SUBDIR) if project_path else ARTIFACTS_DIR
+    rel_dir = Path("_attachments") / session_id
+    dest_dir = root / rel_dir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for upload in files:
+        safe_name = _safe_upload_name(upload.filename or f"attachment-{uuid.uuid4().hex[:8]}")
+        dest = _unique_upload_dest(dest_dir / safe_name)
+        with dest.open("wb") as handle:
+            shutil.copyfileobj(upload.file, handle)
+        rel_path = (rel_dir / dest.name).as_posix()
+        read_path = f"{PROJECT_ARTIFACTS_SUBDIR}/{rel_path}" if project_path else str(dest.resolve())
+        saved.append({
+            "name": upload.filename or dest.name,
+            "path": rel_path,
+            "read_path": read_path,
+            "size": dest.stat().st_size,
+            "content_type": upload.content_type or "",
+        })
+    return {"files": saved}
+
+
+def _safe_upload_name(value: str) -> str:
+    import re
+
+    name = Path(value).name
+    name = re.sub(r"[^A-Za-z0-9._ -]+", "-", name).strip(" ._-")
+    return name[:120] or f"attachment-{uuid.uuid4().hex[:8]}"
+
+
+def _unique_upload_dest(path: Path) -> Path:
+    if not path.exists():
+        return path
+    for idx in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}_{idx}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    return path.with_name(f"{path.stem}_{uuid.uuid4().hex[:8]}{path.suffix}")
 
 
 class ReviewDocumentRequest(BaseModel):
@@ -204,6 +391,7 @@ async def review_document(req: ReviewDocumentRequest, request: Request):
     agent = registry.get("reviewer") or registry.get("chat")
     system_prompt = registry.build_system_prompt(agent.key)
     system_prompt += "\n\n" + _language_instruction(req.language)
+    system_prompt += "\n\n" + _runtime_identity_instruction()
 
     doc_label = _REVIEW_TYPE_LABEL.get(req.document_type, req.document_type or "document")
     if req.document_type in _REVIEW_INSTRUCTIONS:

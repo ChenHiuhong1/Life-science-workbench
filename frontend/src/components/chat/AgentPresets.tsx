@@ -3,11 +3,6 @@ import type { AgentKey } from '@/types';
 
 const PRESETS: Partial<Record<AgentKey, { label: string; inject: string }[]>> = {
   chat: [],
-  literature: [
-    { label: 'Review a field', inject: 'Search and summarize recent progress in this research field:' },
-    { label: 'Gene or protein', inject: 'Search the literature about this gene/protein:' },
-    { label: 'High-impact papers', inject: 'Search high-impact papers for this topic and sort by citation count:' },
-  ],
   brainstorm: [
     {
       label: 'Design from scratch',
@@ -34,6 +29,28 @@ const PRESETS: Partial<Record<AgentKey, { label: string; inject: string }[]>> = 
     {
       label: 'Spatial omics',
       inject: 'I need to analyze spatial transcriptomics data (Visium/Stereo-seq/CosMx/Xenium). First ask whether I prefer Python or R, and whether I have a single-cell reference for deconvolution.\n\nPlatform and data:',
+    },
+  ],
+  structure: [
+    {
+      label: 'Visualize structure',
+      inject: '/protein-structure I have a protein or ligand structure file and want to inspect it in 3D. First identify the file type (PDB/mmCIF/SDF/MOL2), validate that atom coordinates are present, then save or copy a structure artifact with a relative path so the Artifacts panel can render it in 3D. Also report chains, residue or atom counts, hetero atoms/ligands, and any limitations of the preview.\n\nStructure file:',
+    },
+    {
+      label: 'Protein structure',
+      inject: '/protein-structure I need a protein structure prediction or interpretation workflow. First verify the appropriate package or method (AlphaFold2, OpenFold3, Boltz, Chai-1, ESMFold2, or another maintained tool), then ask for FASTA/PDB/mmCIF input, chain stoichiometry, ligands/cofactors, template/MSA availability, GPU or memory limits, confidence metrics, and expected outputs.\n\nInput I have:',
+    },
+    {
+      label: 'Protein design',
+      inject: '/protein-design I need a protein design workflow. First define whether the objective is stability, binder, enzyme, interface, ligand pocket, solubility, or rescue mutation. Then ask for PDB/mmCIF or sequence input, chain IDs, residue numbering, fixed and mutable residues, interface constraints, ligand constraints, forbidden mutations, candidate filtering rules, and validation plan. Do not run code until the constraints and package choice are clear.\n\nStarting structure or sequence:',
+    },
+    {
+      label: 'Docking',
+      inject: '/protein-docking I need a protein-ligand or protein-structure docking workflow. First verify maintained docking software or method papers, then ask for receptor structure source, ligand format, protonation/tautomer/stereochemistry, cofactors, waters, metals, binding-site definition, constraints, and validation strategy. Keep docking scores separate from binding evidence.\n\nReceptor and ligand:',
+    },
+    {
+      label: 'Embeddings',
+      inject: '/protein-embedding I need protein sequence embeddings for similarity search, clustering, retrieval, or downstream prediction. First verify the current fair-esm2 or other maintained implementation, then ask for FASTA input, sequence IDs, model size, layer, pooling strategy, token handling, GPU or memory limits, output format, and interpretation caveats.\n\nSequences or FASTA path:',
     },
   ],
   protocol: [
@@ -91,8 +108,8 @@ export function AgentPresets({ onInject }: { onInject: (text: string) => void })
         <button
           key={p.label}
           onClick={() => onInject(p.inject)}
-          className="px-2 py-0.5 text-[11px] rounded-full border border-cream-300 text-ink-500
-                     hover:border-clay-400 hover:bg-clay-50 hover:text-clay-600 transition-colors"
+          className="rounded-full bg-cream-100 px-2.5 py-1 text-[11px] font-medium text-ink-600
+                     transition-colors hover:bg-clay-50 hover:text-clay-600"
         >
           {p.label}
         </button>
