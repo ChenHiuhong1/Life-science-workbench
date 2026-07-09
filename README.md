@@ -5,7 +5,7 @@
 **面向科研流程的本地桌面 AI 工作台 · A local-first desktop AI workbench for research workflows**
 
 [![Windows](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows11)](https://github.com/ChenHiuhong1/Life-science-workbench/releases)
-[![Release](https://img.shields.io/badge/release-v0.1.5-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
+[![Release](https://img.shields.io/badge/release-v0.1.6-blue)](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
 [下载安装包 · Download](#-下载与安装--installation) · [功能特性 · Features](#-功能特性--features) · [卸载 · Uninstall](#-卸载--uninstall)
@@ -30,14 +30,16 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 - **多模型适配**：兼容任何 OpenAI 接口规范的服务（GLM、DeepSeek、Kimi、OpenAI、本地 vLLM/Ollama 等）。
 - **工作区随项目走**：每个项目绑定自己的研究文件夹，代码执行、产物、文件浏览都在该文件夹内进行，更换文件夹即时生效。
 - **文档编写 + 一键审查**：内置 Markdown 文档编辑器，写完一键调用多领域审稿能力，输出按严重度排序的可执行修改清单。
-- **内置技能库**：随程序内置 18+ 个科研 Agent 技能（蛋白质结构/设计/对接/嵌入、Nature 风格写作、批判性评审、知识图谱等），无需额外配置。
+- **代码审查侧栏**：生信/结构模块跑出的 Python/R 代码，默认只显示「+N/-M · Review」按钮，点击才在右侧抽屉打开完整 diff 审查，不挤占流式对话窗口。
+- **项目级执行服务器**：建项目时可选填远程 Linux 服务器（IP / 端口 / 账号密码 / 工作目录），bio-analysis 与 structure-bio 可在远端跑计算；不填则默认本地沙箱。
+- **内置技能库**：随程序内置 26 个科研 Agent 技能（蛋白质结构/设计/对接/嵌入、Nature 风格写作与润色、批判性评审、统计审查、知识图谱等），无需额外配置。
 
 ### 📥 下载与安装
 
 1. 前往 [Releases 页面](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest)。
 2. 在 **Assets** 中下载：
-   - **推荐**：`ScienceWorkbench_0.1.5_x64-setup.exe`（NSIS 安装包，体积更小）
-   - **备选**：`ScienceWorkbench_0.1.5_x64_en-US.msi`（MSI 安装包，适合企业部署）
+   - **推荐**：`ScienceWorkbench_0.1.6_x64-setup.exe`（NSIS 安装包，体积更小）
+   - **备选**：`ScienceWorkbench_0.1.6_x64_en-US.msi`（MSI 安装包，适合企业部署）
 3. 双击安装，按提示完成。
 4. 从「开始菜单」或桌面快捷方式打开 **Science Workbench**。
 
@@ -58,6 +60,25 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 | **HPC 高性能计算** | SSH 连接、远程命令、上传/下载、调度器队列 |
 
 文献检索不再作为独立 agent 展示；需要证据时，Chat、Study Design、Bio-Analysis、Structure-Bio、Protocol、Reviewer 和 Document 会在各自会话内调用 `search_literature`，检索结果归属当前会话。
+
+### 🧠 每个 Agent 内置的技能
+
+每个 agent 启动时会加载一组「全局约束技能」（harness 执行循环、证据/风险纪律、agent 隔离、目录治理、方法来源核查、自我觉察等），再加上各自专属的领域技能。下表列出每个 agent 的专属技能（全局约束技能对所有 agent 生效，不再重复）。
+
+| Agent | 内置专属技能（随程序加载） |
+|-------|-----------------------------|
+| **Chat** | 无专属技能（通用对话 + 代码执行 + 文献检索） |
+| **Study Design 研究设计** | scientific-brainstorming（假设生成/研究设计流程）、nature-academic-search（文献检索纪律）、literature-review（多论文综述）、knowledge-organization（证据图/假设组织）、mind-map（研究路线思维导图）、notebook-builder（可更新笔记本）、knowledge-graph-builder（知识图谱）、critical-thinking-review（CASP/Cochrane/GRADE 批判性评审） |
+| **Bio-Analysis 生信分析** | nature-figure（Nature 风格图表纪律）+ bioinformatics / superpowers 约束组 |
+| **Structure-Bio 结构生物学** | protein-structure（AlphaFold2/OpenFold3/Boltz/Chai-1/ESMFold2）、protein-design（ProteinMPNN/LigandMPNN/SolubleMPNN）、protein-docking（DiffDock 等）、protein-embedding（fair-esm2）、nature-figure（图表纪律） |
+| **Protocol 实验流程** | protocols 约束组（湿实验流程、对照设计、危险操作警示） |
+| **Reviewer 评审** | nature-reviewer（稿件/图表/流程/研究设计评审）、nature-writing（科学写作结构）、nature-polishing（学术润色）、nature-response（审稿回复信）、statistical-analysis（统计审查）+ bioinformatics/protocols 约束组 |
+| **Document 文档** | critical-thinking-review（批判性审查）+ nature / protocols 约束组（IMRaD 结构、方法引用） |
+| **Module 模块** | module-workflow-packager（工作流抽取/协商/封装为模块规范） |
+
+> 全局约束技能（对所有 agent 生效）：harness-core（感知-规划-执行-验证循环）、evidence-risk-discipline（证据/不确定性/风险纪律）、agent-output-contracts（产物与交接规范）、self-awareness（目标/范围/漂移自检）、agent-isolation（模块间隔离）、project-directory-governance（目录治理）、algorithm-method-sourcing（算法/方法必须溯源到已验证包或文献）。
+>
+> 用户也可在任意会话用 `/skill <名字>` 或 `$<名字>` 临时调用某个技能（仅当回合生效）。
 
 ### 📂 工作区与数据
 
@@ -131,14 +152,16 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 - **Multi-provider**: works with any OpenAI-compatible API (GLM, DeepSeek, Kimi, OpenAI, local vLLM/Ollama, etc.).
 - **Workspace follows the project**: each project binds its own research folder; code execution, artifacts, and file browsing all happen inside that folder, and switching the folder takes effect immediately.
 - **Document writing with one-click review**: a built-in Markdown editor lets you draft a manuscript/protocol/proposal, then run a multi-domain review that returns a severity-sorted, actionable revision checklist.
-- **Bundled skills**: ships with 18+ research-oriented agent skills (protein structure/design/docking/embedding, Nature-style writing, critical review, knowledge graph, etc.) — no extra setup required.
+- **Code-review side panel**: Python/R code run by the bio/structure modules shows only a compact "+N/-M · Review" button by default; click it to open the full diff in a right-side drawer, keeping the streaming conversation window uncluttered.
+- **Per-project execution server**: when creating a project you can optionally fill in a remote Linux server (IP / port / username / password / working directory); bio-analysis and structure-bio can then run compute remotely. Leave it blank to run in the local sandbox.
+- **Bundled skills**: ships with 26 research-oriented agent skills (protein structure/design/docking/embedding, Nature-style writing & polishing, critical review, statistical review, knowledge graph, etc.) — no extra setup required.
 
 ### 📥 Download & Installation
 
 1. Go to the [Releases page](https://github.com/ChenHiuhong1/Life-science-workbench/releases/latest).
 2. From **Assets**, download:
-   - **Recommended**: `ScienceWorkbench_0.1.5_x64-setup.exe` (NSIS installer, smaller).
-   - **Alternative**: `ScienceWorkbench_0.1.5_x64_en-US.msi` (MSI installer, suited for enterprise deployment).
+   - **Recommended**: `ScienceWorkbench_0.1.6_x64-setup.exe` (NSIS installer, smaller).
+   - **Alternative**: `ScienceWorkbench_0.1.6_x64_en-US.msi` (MSI installer, suited for enterprise deployment).
 3. Double-click to install and follow the wizard.
 4. Open **Science Workbench** from the Start menu or desktop shortcut.
 
@@ -162,6 +185,25 @@ Literature search is no longer a standalone agent. When evidence is needed,
 Chat, Study Design, Bio-Analysis, Structure-Bio, Protocol, Reviewer, and Document call
 `search_literature` inside the active session so sources stay attached to the
 work that requested them.
+
+### 🧠 Skills loaded inside each Agent
+
+Every agent loads a set of **global constraint skills** at startup (the harness execution loop, evidence/risk discipline, agent isolation, directory governance, method sourcing, self-awareness, …) on top of its own domain skills. The table below lists each agent's domain-specific skills (global constraints apply to all agents and are omitted from the table).
+
+| Agent | Domain skills loaded (bundled) |
+|-------|--------------------------------|
+| **Chat** | none (general chat + code execution + literature search) |
+| **Study Design** | scientific-brainstorming (hypothesis/study-design flow), nature-academic-search (literature-search discipline), literature-review (multi-paper synthesis), knowledge-organization (evidence/hypothesis maps), mind-map (research-route mind maps), notebook-builder (updateable notebooks), knowledge-graph-builder (knowledge graphs), critical-thinking-review (CASP/Cochrane/GRADE appraisal) |
+| **Bio-Analysis** | nature-figure (Nature-style figure discipline) + bioinformatics / superpowers constraint groups |
+| **Structure-Bio** | protein-structure (AlphaFold2/OpenFold3/Boltz/Chai-1/ESMFold2), protein-design (ProteinMPNN/LigandMPNN/SolubleMPNN), protein-docking (DiffDock et al.), protein-embedding (fair-esm2), nature-figure (figure discipline) |
+| **Protocol** | protocols constraint group (wet-lab workflows, control design, hazard warnings) |
+| **Reviewer** | nature-reviewer (manuscript/figure/protocol/study review), nature-writing (scientific writing structure), nature-polishing (academic polishing), nature-response (rebuttal letters), statistical-analysis (statistical review) + bioinformatics/protocols groups |
+| **Document** | critical-thinking-review (critical appraisal) + nature / protocols groups (IMRaD structure, method citation) |
+| **Module** | module-workflow-packager (workflow extraction/negotiation/packaging into module specs) |
+
+> Global constraint skills (apply to every agent): harness-core (perceive-plan-act-verify loop), evidence-risk-discipline (evidence/uncertainty/risk discipline), agent-output-contracts (artifact & handoff contracts), self-awareness (goal/scope/drift self-check), agent-isolation (cross-module isolation), project-directory-governance (directory governance), algorithm-method-sourcing (algorithms/methods must trace to a verified package or paper).
+>
+> You can also invoke any skill on demand in a session with `/skill <name>` or `$<name>` (applies to that turn only).
 
 ### 📂 Workspace & Data
 
