@@ -80,6 +80,15 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 >
 > 用户也可在任意会话用 `/skill <名字>` 或 `$<名字>` 临时调用某个技能（仅当回合生效）。
 
+### 🤖 Codex 接入规划
+
+Science Workbench 的常规 agent 仍使用「模型提供商 / 模型号 / 上下文窗口 / 思考强度」作为普通 LLM 配置；未来接入 Codex 时，应作为独立的 **Codex Operator** 运行面，而不是直接替换现有 agent 设置。
+
+- **凭据分离**：Codex 可通过 ChatGPT 登录使用订阅权益，也可通过 API Key 使用按量计费；没有 API Key 额度时，应优先走 ChatGPT 登录 / Codex 账户会话。
+- **配置分离**：普通 LLM 的 `provider`、`model`、`context_window`、`reasoning` 与 Codex Operator 的 `model`、`model_reasoning_effort`、sandbox、approval policy 分开保存，避免切换 GLM / DeepSeek / Kimi / OpenAI 时串配置。
+- **模型号按官方接口保存**：Codex 侧保存官方 Codex/API model id（例如 Codex 文档中的 `gpt-5.5` 一类 slug）和 reasoning effort；ChatGPT 网页端显示的 `Pro`、`extended` 等模式标签不应直接当作本地可调用模型号，除非 OpenAI 在 Codex/API 中暴露了对应官方 slug。
+- **集成边界**：若将来让 Science Workbench 暴露为 ChatGPT App / MCP 工具，网页端模型与思考模式由 ChatGPT 会话选择；本应用负责提供工具、文件、产物和权限边界。
+
 ### 📂 工作区与数据
 
 每个项目可绑定一个研究文件夹。绑定后：
@@ -204,6 +213,15 @@ Every agent loads a set of **global constraint skills** at startup (the harness 
 > Global constraint skills (apply to every agent): harness-core (perceive-plan-act-verify loop), evidence-risk-discipline (evidence/uncertainty/risk discipline), agent-output-contracts (artifact & handoff contracts), self-awareness (goal/scope/drift self-check), agent-isolation (cross-module isolation), project-directory-governance (directory governance), algorithm-method-sourcing (algorithms/methods must trace to a verified package or paper).
 >
 > You can also invoke any skill on demand in a session with `/skill <name>` or `$<name>` (applies to that turn only).
+
+### 🤖 Codex Integration Plan
+
+Science Workbench's regular agents continue to use the normal LLM settings surface: provider, model id, context window, and reasoning level. A future Codex integration should be a separate **Codex Operator** surface, not a silent replacement for the existing agent settings.
+
+- **Credential separation**: Codex can use ChatGPT sign-in for subscription access or an API key for usage-based access. If the user does not have API-key quota, prefer the ChatGPT sign-in / Codex session path.
+- **Settings separation**: keep regular LLM `provider`, `model`, `context_window`, and `reasoning` separate from Codex Operator `model`, `model_reasoning_effort`, sandbox, and approval policy, so switching between GLM / DeepSeek / Kimi / OpenAI cannot leak settings across providers.
+- **Official model ids only**: store official Codex/API model ids on the Codex side, such as documented `gpt-5.5`-style slugs, plus reasoning effort. ChatGPT web labels such as `Pro` or `extended` are UI/entitlement mode labels and should not be treated as locally callable model ids unless OpenAI exposes a matching official Codex/API slug.
+- **Integration boundary**: if Science Workbench is later exposed as a ChatGPT App or MCP tool surface, the web model and thinking mode are selected by the ChatGPT conversation; this app provides tools, files, artifacts, and permission boundaries.
 
 ### 📂 Workspace & Data
 

@@ -487,6 +487,8 @@ def test_same_module_sessions_get_separate_artifact_dirs():
     pid = "proj-per-session"
     _os.environ["SCIENCE_WORKBENCH_TEST_DB"] = "1"
 
+    dbmod.init_db()
+
     # Use the real SessionLocal but insert ephemeral rows in a transaction.
     db = dbmod.SessionLocal()
     try:
