@@ -23,6 +23,7 @@ SESSION_MODE_SLUGS = {
     "literature": "literature",
     "brainstorm": "study-design",
     "bio": "bio-analysis",
+    "structure": "structure-biology",
     "protocol": "protocol",
     "reviewer": "reviewer",
     "module": "module",
@@ -34,8 +35,9 @@ FIGURE_EXTS = {".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tiff", ".tif"}
 TABLE_EXTS = {".csv", ".tsv", ".xlsx", ".xls", ".parquet", ".json"}
 DATA_EXTS = {".h5ad", ".h5", ".npy", ".npz", ".pkl"}
 SCRIPT_EXTS = {".py", ".r", ".R", ".ipynb"}
+STRUCTURE_EXTS = {".pdb", ".ent", ".cif", ".mmcif", ".mol", ".sdf", ".mol2", ".pdbqt"}
 DOCUMENT_EXTS = {".txt", ".md", ".html", ".htm"}
-ARTIFACT_EXTS = FIGURE_EXTS | TABLE_EXTS | DATA_EXTS | SCRIPT_EXTS | DOCUMENT_EXTS
+ARTIFACT_EXTS = FIGURE_EXTS | TABLE_EXTS | DATA_EXTS | SCRIPT_EXTS | STRUCTURE_EXTS | DOCUMENT_EXTS
 _SCRIPT_SEQUENCE_LOCK = threading.Lock()
 
 
@@ -97,6 +99,8 @@ def _category_dir(path: Path) -> str:
         return "Table"
     if ext in {item.lower() for item in SCRIPT_EXTS}:
         return "Script"
+    if ext in {item.lower() for item in STRUCTURE_EXTS}:
+        return "Structure"
     if ext in {item.lower() for item in DATA_EXTS}:
         return "Data"
     return "Document"
@@ -207,6 +211,14 @@ def _release_sequence_lock(lock_path: Path | None):
         lock_path.unlink(missing_ok=True)
     except Exception:
         pass
+
+
+def _discard_generated_script(path: Path) -> None:
+    """Remove a failed generated script draft from the durable artifact surface."""
+    try:
+        path.unlink(missing_ok=True)
+    except Exception as exc:
+        logger.warning(f"[executor] could not discard failed generated script {path}: {exc}")
 
 
 def _script_slug(code: str, title: str = "") -> str:
@@ -325,7 +337,7 @@ def _extract_missing_filenames(output: str) -> list[str]:
     """Best-effort extraction of file basenames a missing-file error refers to."""
     # Capture quoted paths or filenames with a known artifact extension.
     pattern = re.compile(
-        r"""['"]?([A-Za-z0-9._\-/\\]+\.(?:h5ad|h5|csv|tsv|xlsx|parquet|json|npy|npz|pkl|txt|md|png|jpg|jpeg|svg|pdf|tif|tiff))['"]?""",
+        r"""['"]?([A-Za-z0-9._\-/\\]+\.(?:h5ad|h5|csv|tsv|xlsx|parquet|json|npy|npz|pkl|txt|md|png|jpg|jpeg|svg|pdf|tif|tiff|pdb|ent|cif|mmcif|mol|sdf|mol2|pdbqt))['"]?""",
         re.IGNORECASE,
     )
     names: list[str] = []
@@ -478,12 +490,14 @@ def _run_code(
             env=env,
         )
     except FileNotFoundError:
+        _discard_generated_script(script_path)
         return {
             "stdout": "",
             "stderr": f"Interpreter not found: {cmd[0]}. Check settings or install the runtime.",
             "returncode": -1,
-            "files": [script_rel],
-            "artifact_review": _review_artifacts(artifact_root, [script_rel]),
+            "files": [],
+            "discarded_files": [script_rel],
+            "artifact_review": [],
             "env_snapshot": "",
             "workdir": str(cwd),
             "artifact_dir": str(artifacts_dir),
@@ -505,7 +519,20 @@ def _run_code(
             except Exception:
                 stdout, stderr = "", ""
             stderr = (stderr or "") + f"\nExecution timed out after {timeout}s and was terminated."
+            _discard_generated_script(script_path)
             returncode = -1
+            discarded = [script_rel]
+            return {
+                "stdout": stdout or "",
+                "stderr": stderr or "",
+                "returncode": returncode,
+                "files": [],
+                "discarded_files": discarded,
+                "artifact_review": [],
+                "env_snapshot": _env_snapshot(language),
+                "workdir": str(cwd),
+                "artifact_dir": str(artifacts_dir),
+            }
         else:
             returncode = proc.returncode
     finally:
@@ -602,6 +629,12 @@ def _run_code(
         except Exception as exc:
             logger.warning(f"[executor] failed to copy external artifact {src_path}: {exc}")
 
+    discarded_files: list[str] = []
+    if returncode != 0 and script_rel in new_files:
+        _discard_generated_script(script_path)
+        new_files = [rel for rel in new_files if rel != script_rel]
+        discarded_files.append(script_rel)
+
     artifact_review = _review_artifacts(artifact_root, new_files)
 
     return {
@@ -609,6 +642,7 @@ def _run_code(
         "stderr": stderr,
         "returncode": returncode,
         "files": new_files,
+        "discarded_files": discarded_files,
         "artifact_review": artifact_review,
         "env_snapshot": _env_snapshot(language),
         "workdir": str(cwd),
@@ -643,7 +677,7 @@ def _scan_external_files(output: str, exts: set, workdir: Path) -> list:
 
     pattern = re.compile(
         r'(([A-Za-z]:[\\/][^\s:<>|*?"\']+)|(?:/[^\s:<>|*?"\']+))'
-        r'\.(?:png|jpg|jpeg|svg|pdf|tiff?|csv|tsv|xlsx|xls|txt|md|html|h5ad|h5|json|npy|npz|pkl|parquet)',
+        r'\.(?:png|jpg|jpeg|svg|pdf|tiff?|csv|tsv|xlsx|xls|txt|md|html|h5ad|h5|json|npy|npz|pkl|parquet|pdb|ent|cif|mmcif|mol|sdf|mol2|pdbqt)',
         re.IGNORECASE,
     )
     found = []
@@ -683,6 +717,8 @@ def _review_artifacts(artifact_root: Path, files: list[str]) -> list[str]:
         elif category == "Script":
             line_count = len(path.read_text(encoding="utf-8", errors="ignore").splitlines())
             notes.append(f"{rel}: script captured ({line_count} lines, {size_kb:.1f} KB).")
+        elif category == "Structure":
+            notes.append(_review_structure(path, rel, size_kb))
         elif category == "Data":
             notes.append(_review_data(path, rel, size_kb))
         else:
@@ -743,6 +779,56 @@ def _review_data(path: Path, rel: str, size_kb: float) -> str:
         except Exception:
             return f"{rel}: data artifact captured ({size_kb:.1f} KB)."
     return f"{rel}: data artifact captured ({size_kb:.1f} KB)."
+
+
+def _review_structure(path: Path, rel: str, size_kb: float) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception as exc:
+        return f"{rel}: structure artifact captured ({size_kb:.1f} KB), preview read failed: {exc}."
+
+    ext = path.suffix.lower()
+    atom_count = 0
+    chain_ids: set[str] = set()
+    if ext in {".pdb", ".ent", ".pdbqt"}:
+        for line in text.splitlines():
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            atom_count += 1
+            chain = line[21:22].strip()
+            if chain:
+                chain_ids.add(chain)
+    elif ext in {".cif", ".mmcif"}:
+        for line in text.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith(("ATOM ", "HETATM ")):
+                atom_count += 1
+                parts = stripped.split()
+                if len(parts) > 6:
+                    chain_ids.add(parts[6])
+    elif ext == ".mol2":
+        in_atoms = False
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.upper().startswith("@<TRIPOS>ATOM"):
+                in_atoms = True
+                continue
+            if stripped.upper().startswith("@<TRIPOS>") and in_atoms:
+                break
+            if in_atoms and stripped:
+                atom_count += 1
+    elif ext in {".mol", ".sdf"}:
+        lines = text.splitlines()
+        if len(lines) >= 4:
+            try:
+                atom_count = int(lines[3][:3])
+            except Exception:
+                atom_count = 0
+
+    chain_note = f", chains={sorted(chain_ids)[:8]}" if chain_ids else ""
+    if atom_count:
+        return f"{rel}: structure captured ({atom_count} atoms{chain_note}, {size_kb:.1f} KB); 3D preview available in Artifacts."
+    return f"{rel}: structure file captured ({size_kb:.1f} KB); atom-coordinate preview may need inspection."
 
 
 def _review_table(path: Path, rel: str, size_kb: float) -> str:
@@ -873,6 +959,8 @@ def _extract_error_summary(stdout: str, stderr: str) -> str:
 def _format_run_result(result: dict) -> str:
     status = "success" if result["returncode"] == 0 else f"return code {result['returncode']}"
     files_line = f"\nArtifact files: {', '.join(result['files'])}" if result["files"] else ""
+    discarded = result.get("discarded_files") or []
+    discarded_line = f"\nDiscarded failed generated scripts: {', '.join(discarded)}" if discarded else ""
     review = result.get("artifact_review") or []
     review_line = "\n--- artifact review ---\n" + "\n".join(review) + "\n" if review else ""
     artifact_dir = f"\nArtifact directory: {result.get('artifact_dir')}" if result.get("artifact_dir") else ""
@@ -894,6 +982,7 @@ def _format_run_result(result: dict) -> str:
         + (f"--- stderr ---\n{result['stderr']}\n" if result["stderr"] else "")
         + review_line
         + files_line
+        + discarded_line
     )
 
 
@@ -947,6 +1036,8 @@ def _artifact_kind(files: list[str]) -> str:
         return "figure"
     if suffixes & {item.lower() for item in TABLE_EXTS}:
         return "table"
+    if suffixes & {item.lower() for item in STRUCTURE_EXTS}:
+        return "file"
     if suffixes & {item.lower() for item in SCRIPT_EXTS}:
         return "code"
     return "file"

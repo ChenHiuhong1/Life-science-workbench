@@ -18,6 +18,15 @@ class Project(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Optional remote execution server. Used by the bio-analysis and
+    # structure-bio agents when filled in: code runs over SSH on this host
+    # instead of the local sandbox. Empty host = run locally (the default).
+    server_host = Column(Text, default="")
+    server_port = Column(Integer, default=22)
+    server_username = Column(Text, default="")
+    server_password = Column(Text, default="")
+    server_workdir = Column(Text, default="")
+
     sessions = relationship("Session", back_populates="project", cascade="all, delete-orphan")
 
 

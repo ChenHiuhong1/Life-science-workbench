@@ -62,17 +62,17 @@ export function FilePicker({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/30 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/25 backdrop-blur-sm" onClick={onCancel}>
       <div
-        className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-cream-300 bg-white shadow-lift"
+        className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-cream-50 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 border-b border-cream-300 bg-cream-50 px-4 py-3">
+        <div className="flex items-center gap-2 border-b border-cream-200 bg-cream-100 px-4 py-3">
           <File size={16} className="text-clay-500" />
           <span className="text-sm font-semibold text-ink-900">Select File</span>
         </div>
 
-        <div className="px-3 py-2 border-b border-cream-300 flex items-center gap-1.5 bg-cream-50">
+        <div className="px-3 py-2 border-b border-cream-200 flex items-center gap-1.5 bg-cream-50">
           <button className="text-ink-400 hover:text-ink-700 p-1 rounded hover:bg-cream-100" onClick={() => load(home)} title="Home">
             <Home size={13} />
           </button>
@@ -83,7 +83,7 @@ export function FilePicker({
           >
             <ArrowUp size={13} />
           </button>
-          <div className="flex-1 truncate rounded-[8px] border border-cream-300 bg-white px-1.5 py-1 font-mono text-xs text-ink-500">
+          <div className="flex-1 truncate rounded-[8px] border border-cream-300 bg-cream-50 px-1.5 py-1 font-mono text-xs text-ink-600">
             {cwd}
           </div>
         </div>
@@ -121,12 +121,12 @@ export function FilePicker({
         </div>
 
         {roots.length > 1 && (
-          <div className="px-3 py-2 border-t border-cream-300 flex flex-wrap gap-1">
+          <div className="px-3 py-2 border-t border-cream-200 flex flex-wrap gap-1">
             {roots.map((root) => (
               <button
                 key={root}
                 onClick={() => load(root)}
-                className="flex items-center gap-1 rounded-[8px] border border-cream-300 px-2 py-0.5 text-[11px] text-ink-500 hover:bg-cream-100"
+                className="flex items-center gap-1 rounded-[8px] bg-cream-100 px-2 py-0.5 text-[11px] text-ink-600 hover:bg-cream-150"
               >
                 <HardDrive size={10} /> {root.replace('\\', '')}
               </button>
@@ -134,7 +134,7 @@ export function FilePicker({
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-cream-300 bg-cream-50 px-4 py-3">
+        <div className="flex items-center justify-between border-t border-cream-200 bg-cream-100 px-4 py-3">
           <span className="text-xs text-ink-400 truncate flex-1 mr-2 font-mono">
             {selected ? selected.split(/[\\/]/).pop() : 'No file selected'}
           </span>

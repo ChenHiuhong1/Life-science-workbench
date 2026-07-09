@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Project, SessionInfo, Message, Artifact, AgentKey } from '@/types';
+import type { Project, ProjectServerFields, SessionInfo, Message, Artifact, AgentKey } from '@/types';
 import { api } from '@/api/client';
 
 const pendingSessionCreates: Partial<Record<string, Promise<string | null>>> = {};
@@ -7,6 +7,7 @@ const SUPPORTED_AGENT_KEYS: AgentKey[] = [
   'chat',
   'brainstorm',
   'bio',
+  'structure',
   'protocol',
   'reviewer',
   'module',
@@ -31,7 +32,32 @@ function normalizeAgentKey(mode?: string | null): AgentKey {
 // 16ms timer on the rare non-browser/Tauri-webview without rAF), so the store
 // only updates ~60 times/second total instead of per-token.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Code review side panel
+//
+// ToolCallCard emits a code diff (the "code review" of a Python/R run). Instead
+// of rendering it inline under the streaming tool call — where it crowds the
+// conversation window — the card only shows a "+N / -M · Review" button. Click
+// it and the full diff opens here, in a dedicated side panel that overlays the
+// artifacts rail without occupying the streaming viewport.
+// ---------------------------------------------------------------------------
+export interface CodeReviewEntry {
+  id: string;
+  language: string;
+  added: number;
+  removed: number;
+  lines: { type: 'add' | 'del' | 'ctx'; text: string; lineNumber: number }[];
+  toolLabel: string;
+  argsSummary?: string;
+}
+
+interface CodeReviewState {
+  active: CodeReviewEntry | null;
+  history: CodeReviewEntry[];
+}
+
 interface PendingDelta { msgId: number; text: string; }
+
 const _pendingDeltas: Record<string, PendingDelta> = {}; // key: `${sid}:${msgId}`
 let _flushScheduled = false;
 const _FLUSH_OPS: Array<() => void> = [];
@@ -74,9 +100,10 @@ interface AppState {
 
   loadProjects: () => Promise<void>;
   selectProject: (id: string) => Promise<void>;
-  createProject: (name: string, localPath?: string) => Promise<void>;
-  updateProject: (id: string, data: { name?: string; description?: string; local_path?: string }) => Promise<void>;
+  createProject: (name: string, localPath?: string, server?: Partial<ProjectServerFields>) => Promise<void>;
+  updateProject: (id: string, data: { name?: string; description?: string; local_path?: string; server?: Partial<ProjectServerFields> }) => Promise<void>;
   archiveProject: (id: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
   createSession: (mode?: AgentKey) => Promise<string | null>;
   selectSession: (id: string) => Promise<void>;
   renameSession: (id: string, title: string) => Promise<void>;
@@ -92,6 +119,12 @@ interface AppState {
   setStreamingState: (sid: string | null, active?: boolean) => void;
   loadArtifacts: (sid: string) => Promise<void>;
   resetSession: () => void;
+
+  // Code review side panel
+  codeReview: CodeReviewState;
+  openCodeReview: (entry: CodeReviewEntry) => void;
+  closeCodeReview: () => void;
+  clearCodeReviewHistory: () => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -114,8 +147,20 @@ export const useStore = create<AppState>((set, get) => ({
   loadProjects: async () => {
     const projects = await api.listProjects(false);
     set({ projects });
-    if (projects.length && !get().currentProjectId) {
+    const currentId = get().currentProjectId;
+    if (projects.length && (!currentId || !projects.some((project) => project.id === currentId))) {
       await get().selectProject(projects[0].id);
+    } else if (!projects.length && currentId) {
+      set({
+        currentProjectId: null,
+        sessions: [],
+        currentSessionId: null,
+        messages: [],
+        artifacts: [],
+        messagesBySession: {},
+        artifactsBySession: {},
+        agentSessionMap: {},
+      });
     }
   },
 
@@ -147,8 +192,8 @@ export const useStore = create<AppState>((set, get) => ({
     await get().setAgent(get().agent);
   },
 
-  createProject: async (name, localPath = '') => {
-    const project = await api.createProject(name, '', localPath);
+  createProject: async (name, localPath = '', server) => {
+    const project = await api.createProject(name, '', localPath, server);
     set({ projects: [project, ...get().projects] });
     await get().selectProject(project.id);
   },
@@ -159,6 +204,7 @@ export const useStore = create<AppState>((set, get) => ({
       name: data.name ?? current?.name ?? '',
       description: data.description ?? current?.description ?? '',
       local_path: data.local_path ?? current?.local_path ?? '',
+      server: data.server,
     };
     const updated = await api.updateProject(id, merged);
     set({ projects: get().projects.map((p) => (p.id === id ? updated : p)) });
@@ -174,8 +220,48 @@ export const useStore = create<AppState>((set, get) => ({
     const remaining = get().projects.filter((project) => project.id !== id);
     set({ projects: remaining });
     if (get().currentProjectId === id) {
-      set({ currentProjectId: null, sessions: [], currentSessionId: null, messages: [] });
+      set({ currentProjectId: null, sessions: [], currentSessionId: null, messages: [], artifacts: [] });
       if (remaining.length) await get().selectProject(remaining[0].id);
+    }
+  },
+
+  deleteProject: async (id) => {
+    const wasCurrent = get().currentProjectId === id;
+    const deletedSessionIds = wasCurrent ? get().sessions.map((session) => session.id) : [];
+    await api.deleteProject(id);
+
+    const remaining = get().projects.filter((project) => project.id !== id);
+    if (!wasCurrent) {
+      set({ projects: remaining });
+      return;
+    }
+
+    const messagesBySession = { ...get().messagesBySession };
+    const artifactsBySession = { ...get().artifactsBySession };
+    const streamingSessions = { ...get().streamingSessions };
+    for (const sid of deletedSessionIds) {
+      delete messagesBySession[sid];
+      delete artifactsBySession[sid];
+      delete streamingSessions[sid];
+    }
+    const streamingIds = Object.keys(streamingSessions);
+    set({
+      projects: remaining,
+      currentProjectId: null,
+      sessions: [],
+      currentSessionId: null,
+      messages: [],
+      artifacts: [],
+      messagesBySession,
+      artifactsBySession,
+      agentSessionMap: {},
+      streamingSessions,
+      streamingSessionId: streamingIds[streamingIds.length - 1] || null,
+      streaming: streamingIds.length > 0,
+    });
+
+    if (remaining.length) {
+      await get().selectProject(remaining[0].id);
     }
   },
 
@@ -441,4 +527,17 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   resetSession: () => set({ messages: [], artifacts: [] }),
+
+  // Code review side panel: a tool call's diff opens here on demand, keeping
+  // the streaming conversation window free of the full diff block.
+  codeReview: { active: null, history: [] },
+  openCodeReview: (entry) => set((state) => ({
+    codeReview: {
+      active: entry,
+      // Keep the most recent reviews; dedupe by id, cap at 12 entries.
+      history: [entry, ...state.codeReview.history.filter((e) => e.id !== entry.id)].slice(0, 12),
+    },
+  })),
+  closeCodeReview: () => set((state) => ({ codeReview: { ...state.codeReview, active: null } })),
+  clearCodeReviewHistory: () => set({ codeReview: { active: null, history: [] } }),
 }));

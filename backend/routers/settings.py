@@ -18,6 +18,7 @@ class SettingsOut(BaseModel):
     has_api_key: bool
     python_executable: str
     r_executable: str
+    chimerax_executable: str
     sandbox_timeout: int
     app_home: str
     workspaces_dir: str
@@ -30,6 +31,7 @@ class SettingsIn(BaseModel):
     reasoning_effort: Optional[str] = None
     python_executable: Optional[str] = None
     r_executable: Optional[str] = None
+    chimerax_executable: Optional[str] = None
     sandbox_timeout: Optional[int] = None
 
 
@@ -38,7 +40,7 @@ def list_models():
     """Return known models + the effective context window for the current one.
 
     Used by the chat UI so the context meter shows the *real* window (e.g.
-    GLM-5.2 = 128K, GLM-5.2[1m] = 1M) instead of a hard-coded value.
+    GLM-5.2 = 1M) instead of a hard-coded value.
     """
     from ..core.model_specs import get_model_spec, list_known_models, context_window_for
     reload_settings()
@@ -64,6 +66,7 @@ def get_settings():
         has_api_key=bool(settings.llm_api_key),
         python_executable=settings.python_executable,
         r_executable=settings.r_executable,
+        chimerax_executable=settings.chimerax_executable,
         sandbox_timeout=settings.sandbox_timeout,
         app_home=str(APP_HOME),
         workspaces_dir=str(WORKSPACES_DIR),
@@ -88,6 +91,7 @@ def save_settings(inp: SettingsIn):
         "REASONING_EFFORT": inp.reasoning_effort,
         "PYTHON_EXECUTABLE": inp.python_executable,
         "R_EXECUTABLE": inp.r_executable,
+        "CHIMERAX_EXECUTABLE": inp.chimerax_executable,
         "SANDBOX_TIMEOUT": str(inp.sandbox_timeout) if inp.sandbox_timeout else None,
     }
     runtime_fields = {
@@ -97,6 +101,7 @@ def save_settings(inp: SettingsIn):
         "REASONING_EFFORT": "reasoning_effort",
         "PYTHON_EXECUTABLE": "python_executable",
         "R_EXECUTABLE": "r_executable",
+        "CHIMERAX_EXECUTABLE": "chimerax_executable",
         "SANDBOX_TIMEOUT": "sandbox_timeout",
     }
 

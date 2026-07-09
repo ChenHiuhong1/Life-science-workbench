@@ -88,9 +88,11 @@ _TOOL_KEYWORDS = {
         "compute", "script", "code", "run", "execute", "analysis", "analyze", "analyse",
         "dataset", "data", "process", "clean", "model", "train", "fit", "predict",
         "average", "mean", "summarize", "summarise", "summarization", "table",
+        "pdb", "mmcif", "cif", "mol2", "sdf", "protein", "structure", "dock",
+        "docking", "embedding", "alphafold", "boltz", "chai", "esmfold", "proteinmpnn",
         "分析", "统计", "计算", "运行", "执行", "代码", "脚本", "画图", "绘图",
         "图表", "可视化", "数据", "数据集", "差异", "聚类", "降维", "热图",
-        "建模", "训练", "清洗", "处理", "平均值",
+        "建模", "训练", "清洗", "处理", "平均值", "蛋白", "结构", "对接", "嵌入",
     ],
     "run_r": [
         "rscript", "r language", "seurat", "ggplot", "ggplot2", "bioconductor", "deseq2",
@@ -99,7 +101,9 @@ _TOOL_KEYWORDS = {
     "search_literature": [
         "literature", "pubmed", "paper", "citation", "cite", "doi", "reference", "review",
         "search", "arxiv", "crossref", "semantic scholar", "evidence", "source",
-        "论文", "文献", "引用", "参考文献", "检索", "综述", "证据", "来源", "期刊", "作者",
+        "alphafold", "openfold", "boltz", "chai-1", "esmfold", "diffdock", "proteinmpnn",
+        "ligandmpnn", "solublempnn", "fair-esm", "esm-2", "论文", "文献", "引用",
+        "参考文献", "检索", "综述", "证据", "来源", "期刊", "作者",
     ],
 }
 
@@ -137,7 +141,7 @@ def select_triggered_tools(keys: List[str], latest_user_text: str, agent_key: st
     # without them and a keyword gap should not silently disable them. Chat and
     # other conceptual agents stay keyword-gated so greetings and explanation
     # prompts stay bare.
-    if not chosen and agent_key in {"bio", "protocol"} and keys:
+    if not chosen and agent_key in {"bio", "protocol", "structure"} and keys:
         return list(keys)
 
     return chosen

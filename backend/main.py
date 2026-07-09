@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from . import logging_config  # noqa: F401
-from .config import settings as app_settings
+from .config import reload_settings, settings as app_settings
 from .core.agent_registry import registry
 from .core.skills_loader import load_all_skills
 from .db.database import init_db
@@ -45,6 +45,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health():
+    reload_settings()
     return {"status": "ok", "model": app_settings.llm_model}
 
 

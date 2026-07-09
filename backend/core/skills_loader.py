@@ -9,12 +9,14 @@ from ..config import BUNDLED_SKILLS_DIR, KNOWLEDGE_DIR, SKILLS_NATURE_DIR, SKILL
 
 
 _CONSTRAINT_PATTERNS = [
-    re.compile(r"^\s*(?:-\s*)?(never|do not|don't|must|always|mandatory|required|forbidden)\b.*", re.I),
+    re.compile(r"^\s*(?:-\s*)?(?:\*\*)?(never|do not|don't|must|always|mandatory|required|forbidden)\b.*", re.I),
+    re.compile(r"^\s*-\s*\*\*[^*]+\*\*.*$", re.I),
     re.compile(r"^\s*#+\s*(constraint|rule|red line|forbidden|mandatory|required).*$", re.I),
 ]
 
 _DESC_RE = re.compile(r'^description:\s*"?(.+?)"?\s*$', re.I | re.M)
 _MAX_CONSTRAINT_CHARS = 6000
+_MAX_CONSTRAINT_LINES_PER_SKILL = 18
 
 
 def _extract_frontmatter_description(text: str) -> str:
@@ -124,23 +126,25 @@ def get_group(group: str) -> List[dict]:
     return [_loaded[name] for name in _loaded_groups.get(group, []) if name in _loaded]
 
 
-def build_constraint_block(names: List[str], max_chars: int = 12000) -> str:
+def build_constraint_block(names: List[str], max_chars: int = 8000) -> str:
     parts = []
     used = 0
-    per_skill_budget = max(800, max_chars // max(1, len(names)))
     for name in names:
         skill = _loaded.get(name)
         if not skill:
             continue
         desc = skill["description"]
-        constraints = skill["constraints"][:40]
+        constraints = skill["constraints"][:_MAX_CONSTRAINT_LINES_PER_SKILL]
 
-        if len(constraints) >= 3:
+        if constraints:
             constraints_txt = "\n".join(f"  - {item}" for item in constraints)
             block = f"### {name}\nDescription: {desc}\nHard constraints:\n{constraints_txt}\n"
         else:
-            full_text = skill["full_text"][:per_skill_budget]
-            block = f"### {name}\n{full_text}\n"
+            block = (
+                f"### {name}\n"
+                f"Description: {desc}\n"
+                f"(Full skill text is loaded only for explicit /{name} or ${name} invocation.)\n"
+            )
 
         if used + len(block) > max_chars:
             block = f"### {name}\nDescription: {desc}\n(See {skill['path']})\n"

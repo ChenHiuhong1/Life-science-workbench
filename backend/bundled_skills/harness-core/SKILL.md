@@ -13,6 +13,9 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 - Always identify the active project, session id, agent mode, user request, and intended output before executing any tool.
 - Always keep tool output, artifacts, citations, and stream deltas bound to the triggering session id.
 - Always state assumptions when a task depends on missing project files, missing data, unavailable packages, or network limits.
+- Always separate facts, tool results, assumptions, inferences, and recommendations when the answer affects scientific interpretation or next actions.
+- Always choose the smallest reversible step that reduces the dominant uncertainty before attempting broad automation.
+- Must check whether a result changes the scientific conclusion before simplifying, retrying, or switching methods.
 - Must prefer existing project directories and artifact rules over ad hoc folder creation.
 - Must record generated files with concise titles and relative paths whenever possible.
 - Must keep replies token-lean: conclusion first, compact bullets only when useful, and no pasted full logs unless the user asks for them.
@@ -21,7 +24,7 @@ on any private local skills. Treat every rule below as a hard runtime contract.
 
 ## Execution Loop (perceive → plan → act → verify)
 
-1. **Perceive** — classify the request: conversation, evidence lookup, study design, bioinformatics, protocol, review, module packaging, document drafting, or HPC. Read only the files and skills the selected agent needs.
+1. **Perceive** — classify the request: conversation, evidence lookup, study design, bioinformatics, structural biology, protocol, review, module packaging, document drafting, or HPC. Read only the files and skills the selected agent needs.
 2. **Plan** — for a multi-step task, state the smallest correct plan before acting. Confirm safety-critical, conclusion-critical, or irreversible assumptions first.
 3. **Act** — use tools for reproducible calculation, literature lookup, figure generation, file conversion, and artifact production. Prefer one well-scoped tool call over several speculative ones.
 4. **Verify** — after each tool call, check the result before continuing. If a run failed, read the error and fix the cause; never paper over a failure by silently switching to a weaker method that changes the scientific conclusion.
@@ -82,11 +85,13 @@ You do **not** stop and ask the user merely because something errored.
 - Never silently degrade a scientific conclusion to work around an error. If a
   fix would change the result, fix the cause or stop and ask — never paper over
   a failure by switching to a weaker method that alters the answer.
+- Must treat null, negative, missing, and failed results as meaningful evidence
+  to interpret, not as output to hide.
 
 ### File/path errors — fix yourself, do not ask (mandatory)
 
 A wrong file path is never a reason to stop. The most common case: step N saved
-a file into the session artifact tree (e.g. `artifacts/bio-analysis/<session>/Data/foo.h5ad`),
+a file into the session artifact tree (e.g. `artifacts/bio-analysis/<session>/Data/foo.h5ad` or `artifacts/structure-biology/<session>/Structure/model.pdb`),
 but step N+1 ran from the project root and read the bare `foo.h5ad`, so the
 file is "not found". Fix it yourself:
 

@@ -85,14 +85,14 @@ export function CodeBlock({
   };
 
   return (
-    <div className="my-3 overflow-hidden rounded-lg border border-[#3B2D23] shadow-subtle">
-      <div className="flex items-center justify-between bg-[#2A211B] px-3 py-1.5">
-        <span className="font-mono text-[11px] uppercase tracking-wider text-[#BCA98F]">{language}</span>
+    <div className="my-3 overflow-hidden rounded-lg shadow-card">
+      <div className="flex items-center justify-between bg-ink-900 px-3 py-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-wider text-cream-100/70">{language}</span>
         <div className="flex items-center gap-1">
           {reviewable && (
             <button
               onClick={open && review ? () => setOpen((v) => !v) : runReview}
-              className="rounded p-1 text-[#BCA98F] transition-colors hover:bg-[#3A2D24] hover:text-white"
+              className="rounded p-1 text-cream-100/70 transition-colors hover:bg-ink-800 hover:text-cream-50"
               title={reviewing ? 'Stop review' : 'Review code'}
             >
               {reviewing ? <Loader2 size={12} className="animate-spin text-clay-400" /> : <ShieldCheck size={12} />}
@@ -100,18 +100,18 @@ export function CodeBlock({
           )}
           <button
             onClick={copy}
-            className="rounded p-1 text-[#BCA98F] transition-colors hover:bg-[#3A2D24] hover:text-white"
+            className="rounded p-1 text-cream-100/70 transition-colors hover:bg-ink-800 hover:text-cream-50"
             title="Copy"
           >
             {copied ? <Check size={12} className="text-[#7CB66B]" /> : <Copy size={12} />}
           </button>
         </div>
       </div>
-      <pre className="overflow-x-auto bg-[#14241C] p-3.5 font-mono text-xs leading-relaxed text-[#F5F0E6]">
+      <pre className="overflow-x-auto bg-ink-900 p-3.5 font-mono text-xs leading-relaxed text-cream-50">
         <code>{code}</code>
       </pre>
       {open && (reviewing || review || error) && (
-        <div className="border-t border-[#3B2D23] bg-cream-50 p-3">
+        <div className="border-t border-cream-200 bg-cream-100 p-3">
           {error ? (
             <div className="flex items-start gap-2 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />

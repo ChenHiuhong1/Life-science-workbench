@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     sandbox_memory_mb: int = 4096
     python_executable: str = "python"
     r_executable: str = "Rscript"
+    chimerax_executable: str = ""
 
     host: str = "127.0.0.1"
     port: int = 8000
@@ -135,6 +136,7 @@ def reload_settings() -> None:
         settings.reasoning_effort = fresh.reasoning_effort
         settings.python_executable = fresh.python_executable
         settings.r_executable = fresh.r_executable
+        settings.chimerax_executable = fresh.chimerax_executable
         settings.sandbox_timeout = fresh.sandbox_timeout
     except Exception:
         pass

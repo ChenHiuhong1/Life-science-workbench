@@ -11,8 +11,15 @@
     font-size: 17px;
   }
   body {
-    @apply bg-cream-50 text-ink-900 font-sans antialiased;
+    /* Warm ivory surface, green-tinted (not flat beige). Warmth is carried by
+       accent + serif type, not a yellow body bg. */
+    @apply bg-cream-50 text-ink-900 font-serif antialiased;
     font-feature-settings: 'cv02', 'cv05', 'ss01', 'tnum';
+    /* Newsreader ships a variable opsz axis; let the browser pick the optical
+       size per font-size so large display headings get the high-contrast
+       "display" cut and small UI gets the sturdier "text" cut — same as the
+       reference site. */
+    font-optical-sizing: auto;
   }
   h1, h2, h3 {
     text-wrap: balance;
@@ -23,62 +30,80 @@
 }
 
 @layer components {
+  /* ── Buttons ───────────────────────────────────────────────────────
+     Material rule: shadow OR border, never both. Primary carries a subtle
+     shadow for affordance; outline carries a solid border only. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-[10px]
-           text-sm font-semibold transition-all duration-150 select-none
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay-400/35;
+           text-sm font-semibold transition-colors duration-150 select-none
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay-400/40;
   }
   .btn-primary {
-    @apply btn bg-clay-600 text-white hover:bg-clay-500 active:bg-ink-800 shadow-subtle
-           disabled:bg-cream-300 disabled:text-ink-300 disabled:cursor-not-allowed;
+    @apply btn bg-clay-500 text-white hover:bg-clay-400 active:bg-clay-700 shadow-subtle
+           disabled:bg-cream-300 disabled:text-ink-300 disabled:cursor-not-allowed disabled:shadow-none;
   }
   .btn-ghost {
-    @apply btn text-ink-700 hover:bg-cream-100 active:bg-cream-200;
+    @apply btn text-ink-600 hover:bg-cream-100 active:bg-cream-150;
   }
   .btn-outline {
-    @apply btn border border-cream-300 bg-white/80 text-ink-700 hover:bg-cream-100 active:bg-cream-200;
+    @apply btn border border-cream-300 bg-cream-50 text-ink-700 hover:bg-cream-100 active:bg-cream-150;
   }
 
+  /* Cards: defined shadow only, no decorative hairline border. */
   .card {
-    @apply bg-white/90 border border-cream-300 rounded-lg shadow-subtle;
+    @apply bg-cream-50 rounded-lg shadow-card;
   }
 
+  /* Inputs: solid border only, no shadow (the only place borders earn their
+     place — they delimit an editable field). */
   .input {
-    @apply w-full px-3 py-2 rounded-[10px] border border-cream-300 bg-white/90
-           text-sm text-ink-900 placeholder:text-ink-300
-           focus:outline-none focus:border-clay-500 focus:ring-2 focus:ring-clay-400/20
-           transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.75)];
+    @apply w-full px-3 py-2 rounded-[10px] border border-cream-300 bg-cream-50
+           text-sm text-ink-900 placeholder:text-ink-500
+           focus:outline-none focus:border-clay-400 focus:ring-2 focus:ring-clay-400/20
+           transition-colors;
   }
 
   .nav-item {
     @apply flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm cursor-pointer
-           text-ink-500 hover:bg-cream-100 hover:text-ink-900 transition-colors;
+           text-ink-600 hover:bg-cream-100 hover:text-ink-900 transition-colors;
   }
   .nav-item-active {
-    @apply bg-white text-ink-900 font-semibold hover:bg-white shadow-subtle ring-1 ring-cream-300;
+    /* Pure background selection state — no ring + shadow ghost-card combo. */
+    @apply bg-clay-50 text-clay-700 font-semibold hover:bg-clay-50;
   }
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #BFA77D; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #006A3A; }
+::-webkit-scrollbar-thumb { background: #C9C2AD; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #62A87F; background-clip: padding-box; border: 2px solid transparent; }
 
+/* ── Prose (assistant Markdown, document review, streaming) ─────────
+   Full serif reading voice — matches the reference site's all-serif body.
+   Newsreader for Latin, Noto Serif SC for CJK; the variable opsz axis is
+   driven by font-optical-sizing on the body. Code/pre stay monospace. */
+.prose {
+  @apply font-serif text-ink-800;
+  font-optical-sizing: auto;
+}
 .prose pre {
-  @apply bg-[#14241C] text-[#F5F0E6] rounded-lg p-4 overflow-x-auto text-sm font-mono my-3;
+  @apply bg-ink-900 text-cream-50 rounded-lg p-4 overflow-x-auto text-sm font-mono my-3;
 }
 .prose code:not(pre code) {
-  @apply bg-cream-100 text-clay-600 px-1.5 py-0.5 rounded text-[0.9em] font-mono;
+  @apply bg-cream-150 text-clay-600 px-1.5 py-0.5 rounded text-[0.9em] font-mono;
 }
-.prose p { @apply my-2.5 leading-relaxed; }
-.prose ul { @apply my-2.5 pl-5 list-disc space-y-1; }
-.prose ol { @apply my-2.5 pl-5 list-decimal space-y-1; }
-.prose h1, .prose h2, .prose h3 { @apply font-serif font-semibold text-ink-900 mt-4 mb-2; }
-.prose h1 { @apply text-2xl; }
-.prose h2 { @apply text-xl; }
+.prose p { @apply my-2.5 leading-[1.7]; }
+.prose ul { @apply my-2.5 pl-5 list-disc space-y-1 leading-[1.7]; }
+.prose ol { @apply my-2.5 pl-5 list-decimal space-y-1 leading-[1.7]; }
+.prose h1, .prose h2, .prose h3 {
+  @apply font-serif font-semibold text-ink-900 mt-4 mb-2;
+  font-optical-sizing: auto;
+}
+.prose h1 { @apply text-2xl tracking-[-0.02em]; }
+.prose h2 { @apply text-xl tracking-[-0.015em]; }
 .prose h3 { @apply text-lg; }
 .prose blockquote {
-  @apply border-l-2 border-clay-400 pl-3 text-ink-500 italic my-3;
+  @apply border-l-2 border-clay-300 pl-3 text-ink-600 italic my-3;
 }
 .prose table {
   @apply w-full text-sm border border-cream-300 my-3;
@@ -87,7 +112,7 @@
   @apply border border-cream-300 px-2 py-1 text-left;
 }
 .prose th { @apply bg-cream-100 font-semibold; }
-.prose a { @apply text-clay-600 underline underline-offset-2 hover:text-clay-500; }
+.prose a { @apply text-clay-500 underline underline-offset-2 hover:text-clay-400; }
 
 /* --- Streaming affordances (Claude/Codex-style) ------------------------- */
 
@@ -137,16 +162,16 @@
 /* --- Launch layer ------------------------------------------------------- */
 
 .launch-shell {
-  animation: sw-launch-shell 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: sw-launch-shell 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.launch-panel {
-  animation: sw-launch-panel 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.launch-rise {
+  animation: sw-launch-rise 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .launch-progress {
   transform-origin: left center;
-  animation: sw-launch-progress 960ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sw-launch-progress 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes sw-launch-shell {
@@ -154,19 +179,19 @@
   to { opacity: 1; }
 }
 
-@keyframes sw-launch-panel {
-  from { opacity: 0; transform: translateY(8px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes sw-launch-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes sw-launch-progress {
-  from { transform: scaleX(0.14); }
+  from { transform: scaleX(0.08); }
   to { transform: scaleX(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .launch-shell,
-  .launch-panel,
+  .launch-rise,
   .launch-progress,
   .stream-active > *:last-child::after,
   .typing-dot,
@@ -178,3 +203,10 @@
     transform: scaleX(1);
   }
 }
+
+/* ── Dark-mode hook (reserved) ───────────────────────────────────────
+   The reference site follows the system dark mode. Light is shipped now;
+   when dark is added, define the inverted ivory→emerald surface here.
+@media (prefers-color-scheme: dark) {
+  :root { --sw-dark-surface: #14241C; }
+} */

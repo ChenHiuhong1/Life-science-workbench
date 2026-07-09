@@ -10,7 +10,7 @@ lets the UI show an accurate context meter (no more hard-coded 128K) and lets
 Lookup rules
 ------------
 - Match is by *normalised* model name: lowercased, ignoring a trailing
-  ``[1m]`` / ``-1m`` tier suffix. The tier is returned alongside the spec so
+  ``[1m]`` tier suffix. The tier is returned alongside the spec so
   callers can pick the long-context variant (``[1m]``) when the user opted in.
 - Unknown models fall back to a safe default (128K context, 8K output, no
   optional params) so the app keeps working for any OpenAI-compatible endpoint.
@@ -43,6 +43,9 @@ class ModelSpec:
     supports_thinking_param: bool = False
     # Default reasoning_effort value when none is specified.
     default_reasoning_effort: str = "max"
+    # Optional provider-specific mapping from the workbench's simple
+    # none/high/max tiers to the exact API values accepted by the model.
+    reasoning_effort_map: dict[str, str] = field(default_factory=dict)
     # Marks specs that ship from this registry (used for debugging).
     note: str = ""
 
@@ -118,19 +121,153 @@ _SPECS: Dict[str, ModelSpec] = {
         context_window=64_000,
         max_output_tokens=32_768,
     ),
+    "gpt-5.5": ModelSpec(
+        label="GPT-5.5",
+        context_window=1_000_000,
+        max_output_tokens=128_000,
+        supports_reasoning_effort=True,
+        default_reasoning_effort="max",
+        reasoning_effort_map={
+            "none": "none",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "max": "xhigh",
+            "auto": "xhigh",
+        },
+        note="OpenAI flagship GPT model; workbench max maps to OpenAI xhigh reasoning.",
+    ),
+    "gpt-5.4": ModelSpec(
+        label="GPT-5.4",
+        context_window=1_000_000,
+        max_output_tokens=128_000,
+        supports_reasoning_effort=True,
+        default_reasoning_effort="max",
+        reasoning_effort_map={
+            "none": "none",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "max": "xhigh",
+            "auto": "xhigh",
+        },
+    ),
+    "gpt-5.4-mini": ModelSpec(
+        label="GPT-5.4 mini",
+        context_window=400_000,
+        max_output_tokens=128_000,
+        supports_reasoning_effort=True,
+        default_reasoning_effort="high",
+        reasoning_effort_map={
+            "none": "none",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "max": "xhigh",
+            "auto": "high",
+        },
+    ),
     "gpt-4o": ModelSpec(
         label="GPT-4o",
         context_window=128_000,
         max_output_tokens=16_384,
+    ),
+    "gpt-4o-mini": ModelSpec(
+        label="GPT-4o mini",
+        context_window=128_000,
+        max_output_tokens=16_384,
+    ),
+    "gpt-4.1": ModelSpec(
+        label="GPT-4.1",
+        context_window=1_000_000,
+        max_output_tokens=32_768,
+        note="Best-effort legacy OpenAI API spec retained for existing configs.",
+    ),
+    "gpt-4.1-mini": ModelSpec(
+        label="GPT-4.1 mini",
+        context_window=1_000_000,
+        max_output_tokens=32_768,
+        note="Best-effort legacy OpenAI API spec retained for existing configs.",
+    ),
+    "gpt-4.1-nano": ModelSpec(
+        label="GPT-4.1 nano",
+        context_window=1_000_000,
+        max_output_tokens=32_768,
+        note="Best-effort legacy OpenAI API spec retained for existing configs.",
     ),
     "moonshot-v1-8k": ModelSpec(
         label="Kimi v1 (8K)",
         context_window=8_000,
         max_output_tokens=4_096,
     ),
+    "moonshot-v1-32k": ModelSpec(
+        label="Kimi v1 (32K)",
+        context_window=32_000,
+        max_output_tokens=4_096,
+    ),
+    "moonshot-v1-128k": ModelSpec(
+        label="Kimi v1 (128K)",
+        context_window=128_000,
+        max_output_tokens=4_096,
+    ),
 }
 
 _LONG_CONTEXT_SUFFIX_RE = re.compile(r"\s*\[(?P<tier>[0-9]+[mk])\]\s*$", re.IGNORECASE)
+_MODEL_ALIASES = {
+    "glm5.2": "glm-5.2",
+    "glm_5.2": "glm-5.2",
+    "glm 5.2": "glm-5.2",
+    "glm5.1": "glm-5.1",
+    "glm_5.1": "glm-5.1",
+    "glm 5.1": "glm-5.1",
+    "glm4.6": "glm-4.6",
+    "glm_4.6": "glm-4.6",
+    "glm 4.6": "glm-4.6",
+    "glm4.5": "glm-4.5",
+    "glm_4.5": "glm-4.5",
+    "glm 4.5": "glm-4.5",
+    "gpt5.5": "gpt-5.5",
+    "gpt_5.5": "gpt-5.5",
+    "gpt 5.5": "gpt-5.5",
+    "gpt5.4": "gpt-5.4",
+    "gpt_5.4": "gpt-5.4",
+    "gpt 5.4": "gpt-5.4",
+    "gpt5.4mini": "gpt-5.4-mini",
+    "gpt_5.4_mini": "gpt-5.4-mini",
+    "gpt 5.4 mini": "gpt-5.4-mini",
+    "gpt4.1": "gpt-4.1",
+    "gpt_4.1": "gpt-4.1",
+    "gpt 4.1": "gpt-4.1",
+    "gpt4o": "gpt-4o",
+    "gpt_4o": "gpt-4o",
+    "gpt4omini": "gpt-4o-mini",
+    "gpt_4o_mini": "gpt-4o-mini",
+    "gpt 4o mini": "gpt-4o-mini",
+}
+
+
+def _compact_model_key(model: str) -> str:
+    """Collapse punctuation that users often vary when typing model ids."""
+    return re.sub(r"[\s_-]+", "", model.strip().lower())
+
+
+def _canonical_model_key(model: str) -> str:
+    """Resolve aliases and separator variants to a registered model key."""
+    base = model.strip().lower()
+    alias = _MODEL_ALIASES.get(base)
+    if alias:
+        return alias
+
+    separator_normalised = re.sub(r"[\s_]+", "-", base)
+    if separator_normalised in _SPECS:
+        return separator_normalised
+
+    compact = _compact_model_key(separator_normalised)
+    for key in _SPECS:
+        if _compact_model_key(key) == compact:
+            return key
+
+    return separator_normalised
 
 
 def _normalise(model: str) -> tuple[str, str | None]:
@@ -144,8 +281,8 @@ def _normalise(model: str) -> tuple[str, str | None]:
     if match:
         tier = match.group("tier").lower()
         base = _LONG_CONTEXT_SUFFIX_RE.sub("", model).strip().lower()
-        return base, tier
-    return model.strip().lower(), None
+        return _canonical_model_key(base), tier
+    return _canonical_model_key(model), None
 
 
 def get_model_spec(model: str) -> ModelSpec:
@@ -165,6 +302,7 @@ def get_model_spec(model: str) -> ModelSpec:
             supports_reasoning_effort=spec.supports_reasoning_effort,
             supports_thinking_param=spec.supports_thinking_param,
             default_reasoning_effort=spec.default_reasoning_effort,
+            reasoning_effort_map=spec.reasoning_effort_map,
             note=spec.note,
         )
     return spec

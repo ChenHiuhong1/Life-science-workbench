@@ -279,23 +279,23 @@ export function DocumentEditor() {
 
   if (!currentProjectId) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-cream-50/70">
+      <div className="flex-1 flex items-center justify-center bg-cream-50">
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-cream-300 bg-white shadow-subtle">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cream-100 shadow-card">
             <FileText size={24} className="text-clay-500" strokeWidth={1.5} />
           </div>
-          <p className="text-sm text-ink-500">{t('nav.no_project')}</p>
-          <p className="text-xs text-ink-300 mt-1">{t('nav.no_project_desc')}</p>
+          <p className="text-sm text-ink-600">{t('nav.no_project')}</p>
+          <p className="text-xs text-ink-500 mt-1">{t('nav.no_project_desc')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <section className="flex-1 flex overflow-hidden bg-cream-50/70">
+    <section className="flex-1 flex overflow-hidden bg-cream-50">
       {/* Editor column */}
-      <div className="flex-1 flex flex-col overflow-hidden border-r border-cream-300">
-        <div className="h-11 shrink-0 border-b border-cream-300 bg-cream-50/95 flex items-center gap-2 px-3">
+      <div className="flex-1 flex flex-col overflow-hidden border-r border-cream-200">
+        <div className="h-11 shrink-0 border-b border-cream-200 bg-cream-100/60 flex items-center gap-2 px-3">
           <FileText size={14} className="text-clay-500" />
           <input
             className="min-w-0 flex-1 truncate bg-transparent text-sm font-semibold text-ink-900 focus:outline-none"
@@ -304,7 +304,7 @@ export function DocumentEditor() {
             placeholder={t('doc.save_ph')}
           />
           <select
-            className="rounded-[8px] border border-cream-300 bg-white px-2 py-1 text-xs text-ink-700 focus:outline-none focus:ring-2 focus:ring-clay-400/20"
+            className="rounded-[8px] bg-cream-100 px-2 py-1 text-xs text-ink-700 focus:outline-none focus:ring-2 focus:ring-clay-400/20"
             value={docType}
             onChange={(e) => handleTypeChange(e.target.value as DocType)}
             title={t('doc.type')}
@@ -335,7 +335,7 @@ export function DocumentEditor() {
         {/* Stats + change-tracking bar. Always visible while editing so the user
             can see at a glance how much has been written and how much has
             drifted from the last review baseline. */}
-        <div className="shrink-0 flex items-center gap-3 border-b border-cream-300 bg-cream-100/60 px-3 py-1 text-[11px] text-ink-500">
+        <div className="shrink-0 flex items-center gap-3 border-b border-cream-200 bg-cream-100 px-3 py-1 text-[11px] text-ink-500">
           <span title="Lines"><strong className="text-ink-700">{stats.lines}</strong> lines</span>
           <span className="text-cream-300">·</span>
           <span title="Words"><strong className="text-ink-700">{stats.words}</strong> words</span>
@@ -344,9 +344,9 @@ export function DocumentEditor() {
           <span className="text-cream-300">·</span>
           <span title="Diff vs baseline since last review">
             <span className={diffSummary.added ? 'text-ok font-medium' : 'text-ink-400'}>+{diffSummary.added}</span>
-            <span className="text-ink-300"> / </span>
+            <span className="text-cream-300"> / </span>
             <span className={diffSummary.removed ? 'text-err font-medium' : 'text-ink-400'}>-{diffSummary.removed}</span>
-            <span className="text-ink-300 ml-1">since baseline</span>
+            <span className="text-ink-500 ml-1">since baseline</span>
           </span>
           <div className="ml-auto flex items-center gap-2">
             <label className="flex cursor-pointer select-none items-center gap-1 text-ink-500 hover:text-ink-700" title="Live review: re-runs shortly after you stop editing">
@@ -387,7 +387,7 @@ export function DocumentEditor() {
               <span>Reset baseline</span>
             </button>
             {lastSavedAt && (
-              <span className="text-ink-300" title="Last autosave">
+              <span className="text-ink-500" title="Last autosave">
                 saved {new Date(lastSavedAt).toLocaleTimeString()}
               </span>
             )}
@@ -396,7 +396,7 @@ export function DocumentEditor() {
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="border-b border-cream-300 bg-cream-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink-400">
+            <div className="border-b border-cream-200 bg-cream-100 px-3 py-1.5 text-[11px] font-semibold text-ink-600">
               {t('doc.editor')}
             </div>
             <textarea
@@ -411,8 +411,8 @@ export function DocumentEditor() {
             {showDiff && diff && <DiffView diff={diff} />}
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden border-l border-cream-300 bg-white/80">
-            <div className="border-b border-cream-300 bg-cream-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink-400">
+          <div className="flex-1 flex flex-col overflow-hidden border-l border-cream-200 bg-cream-100/60">
+            <div className="border-b border-cream-200 bg-cream-100 px-3 py-1.5 text-[11px] font-semibold text-ink-600">
               {t('doc.preview')}
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -452,7 +452,7 @@ export function DocumentEditor() {
 
 function DiffView({ diff }: { diff: DiffLine[] }) {
   return (
-    <div className="max-h-56 shrink-0 overflow-y-auto border-t border-cream-300 bg-[#14241C] font-mono text-[11px]">
+    <div className="max-h-56 shrink-0 overflow-y-auto border-t border-cream-200 bg-ink-900 font-mono text-[11px]">
       {diff.map((line, idx) => {
         const cls = line.type === 'add'
           ? 'bg-[#1e3a2e] text-[#b9e6c4]'

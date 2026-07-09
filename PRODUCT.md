@@ -10,7 +10,7 @@ Science Workbench is used by researchers, bioinformaticians, graduate students, 
 
 ## Product Purpose
 
-Science Workbench is a local-first desktop AI workbench for research workflows. It brings LLM chat, literature search, study design, bioinformatics analysis, wet-lab protocol support, document review, artifact tracking, project workspaces, and HPC operations into one Windows application while keeping user data on the local machine.
+Science Workbench is a local-first desktop AI workbench for research workflows. It brings LLM chat, literature search, study design, bioinformatics analysis, computational structural biology, wet-lab protocol support, document review, artifact tracking, project workspaces, and HPC operations into one Windows application while keeping user data on the local machine.
 
 Success means the interface feels trustworthy enough for real scientific work, stays fast during long streams and agent switches, makes generated artifacts easy to inspect, and keeps project context visible without making the workspace feel crowded.
 

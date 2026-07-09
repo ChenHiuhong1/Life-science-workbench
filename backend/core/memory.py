@@ -2,7 +2,7 @@
 
 Science Workbench supports a CLAUDE.md / AGENTS.md style memory file that lets
 the user customize agent behaviour per project. The loader searches a small set
-of well-defined locations and concatenates whatever it finds into a single
+of well-defined user locations and concatenates whatever it finds into a single
 "Project Memory" block that is injected at the top of every agent's system
 prompt.
 
@@ -10,10 +10,14 @@ Lookup order (later entries override earlier ones by *appending*, so the most
 specific memory is read last by the model):
 
 1. Global memory at ``APP_HOME/AGENTS.md`` — applies to every project.
-2. Backend dev memory at ``backend/AGENTS.md`` — a developer-default that ships
-   with the repo.
-3. Project-bound folder memory at ``<project_path>/AGENTS.md`` — the primary,
+2. Project-bound folder memory at ``<project_path>/AGENTS.md`` — the primary,
    user-edited per-project memory. This is what most users will use.
+
+The repository's ``backend/AGENTS.md`` is a user-facing template/documentation
+file. It is not injected by default because that would spend prompt tokens on
+instructions about how to write memory rather than actual project rules. Set
+``SCIENCE_WORKBENCH_INCLUDE_DEFAULT_MEMORY=1`` only for development scenarios
+that explicitly need that file injected.
 
 Each location is optional. The combined block is cached and only re-read when
 any of the resolved files' mtime changes, so editing the file takes effect on
@@ -26,6 +30,8 @@ from typing import List, Optional, Tuple
 
 from loguru import logger
 
+import os
+
 from ..config import APP_HOME, BACKEND_DIR
 
 
@@ -35,10 +41,9 @@ _MAX_MEMORY_CHARS = 16_000  # cap so a runaway memory file can't blow the prompt
 
 def _candidate_paths(project_path: str = "") -> List[Path]:
     """Return the ordered list of memory-file locations to look at."""
-    paths: List[Path] = [
-        APP_HOME / MEMORY_FILENAME,        # global, all projects
-        BACKEND_DIR / MEMORY_FILENAME,     # developer default shipped with repo
-    ]
+    paths: List[Path] = [APP_HOME / MEMORY_FILENAME]  # global, all projects
+    if os.environ.get("SCIENCE_WORKBENCH_INCLUDE_DEFAULT_MEMORY", "").lower() in {"1", "true", "yes"}:
+        paths.append(BACKEND_DIR / MEMORY_FILENAME)
     if project_path:
         paths.append(Path(project_path).expanduser() / MEMORY_FILENAME)  # per-project
     return paths

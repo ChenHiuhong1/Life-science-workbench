@@ -18,8 +18,10 @@ Use this skill for protein structure prediction, structure interpretation, model
 
 - Always verify the current package or authoritative paper before giving installation, command, or benchmark claims.
 - Always report model confidence metrics when available, such as pLDDT, PAE, pTM, ipTM, clash metrics, or interface confidence.
+- Always save generated PDB/mmCIF structure outputs with relative paths so the built-in Structure preview opens in cartoon mode by default.
 - Must distinguish monomer prediction, multimer/interface prediction, ligand/cofactor prediction, and design validation.
 - Must preserve input sequence identifiers and report sequence length, chain count, and known domains.
+- Must recommend desktop ChimeraX for detailed inspection, publication screenshots, measurements, and clash/contact analysis when the built-in preview is insufficient.
 - Do not treat predicted structures as experimental structures.
 - Do not overinterpret low-confidence regions, disordered regions, or interfaces without orthogonal evidence.
 

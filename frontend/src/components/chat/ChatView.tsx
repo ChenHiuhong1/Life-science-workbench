@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, memo } from 'react';
-import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X, ShieldCheck, Loader2, Brain, ListChecks, Plus, ExternalLink } from 'lucide-react';
+import { Send, AlertCircle, Square, FolderOpen, FolderPlus, X, ShieldCheck, Loader2, Brain, ListChecks, Plus, ExternalLink, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '@/store';
 import { useI18n } from '@/i18n';
 import { api } from '@/api/client';
-import type { AgentInfo, AgentKey, Message } from '@/types';
+import type { AgentInfo, AgentKey, ChatAttachment, Message, SkillInfo } from '@/types';
 import { BrandAvatar } from '@/components/BrandMark';
 import { CodeBlock } from './CodeBlock';
 import { AgentPresets } from './AgentPresets';
@@ -26,6 +26,32 @@ function extractPlanItems(content: string): string[] {
     items.push(line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s*/, ''));
   }
   return items.slice(0, 30);
+}
+
+function buildUserText(text: string, attachments: ChatAttachment[]): string {
+  const body = text || 'Please use the attached file(s) for this request.';
+  if (!attachments.length) return body;
+  const lines = attachments.map((file) =>
+    `- ${file.name} (${formatBytes(file.size)}): ${file.read_path}`
+  );
+  return `${body}\n\n[Uploaded attachments]\n${lines.join('\n')}\n\nUse the listed read_path values when code or analysis needs the files.`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  return `${value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[idx]}`;
+}
+
+function skillCommandQuery(input: string): string | null {
+  const match = input.match(/^\s*([/$])(?:skill\s+)?([A-Za-z0-9_.-]*)$/i);
+  return match ? match[2] || '' : null;
 }
 
 export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
@@ -49,6 +75,10 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     currentSessionId ? !!s.streamingSessions[currentSessionId] : false
   );
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skillsLoaded, setSkillsLoaded] = useState(false);
   // Per-message thinking tier override. Default 'max' matches the global
   // setting; the user can dial it down per message in the chat box.
   const [effort, setEffort] = useState<'none' | 'high' | 'max'>('max');
@@ -62,6 +92,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
   // several concurrent streams in one session each keep their own caret.
   const [streamingIds, setStreamingIds] = useState<Record<number, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeStreamsRef = useRef<Set<string>>(new Set());
   const controllersRef = useRef<Record<string, AbortController>>({});
   // Stick-to-bottom: only auto-scroll while the user is already parked near the
@@ -107,8 +138,19 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [currentSessionId]);
 
+  useEffect(() => {
+    if (skillsLoaded) return;
+    if (!/^\s*[/$](?:skill\s+)?[A-Za-z0-9_.-]{0,40}$/i.test(input)) return;
+    api.listSkills()
+      .then((items) => {
+        setSkills(items);
+        setSkillsLoaded(true);
+      })
+      .catch(() => {});
+  }, [input, skillsLoaded]);
+
   const send = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && !attachments.length) return;
 
     let sid = currentSessionId;
     if (!sid) {
@@ -119,8 +161,9 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
       }
     }
 
-    const userText = input.trim();
+    const userText = buildUserText(input.trim(), attachments);
     setInput('');
+    setAttachments([]);
     setErrorFor(sid, '');
     stickToBottomRef.current = true;
 
@@ -389,6 +432,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (uploadingAttachments) return;
       send();
     }
   };
@@ -397,8 +441,39 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
     if (path) api.fsOpenFolder(path).catch(() => {});
   };
 
+  const uploadSelectedFiles = async (fileList: FileList | null) => {
+    const selected = Array.from(fileList || []);
+    if (!selected.length) return;
+    let sid = currentSessionId;
+    if (!sid) {
+      sid = await createSession();
+      if (!sid) {
+        setErrorFor(errorKey, 'Create or select a project first.');
+        return;
+      }
+    }
+    setUploadingAttachments(true);
+    setErrorFor(sid, '');
+    try {
+      const result = await api.uploadAttachments(sid, currentProjectPath, selected);
+      setAttachments((prev) => [...prev, ...(result.files || [])]);
+    } catch (e: any) {
+      setErrorFor(sid, e?.message || 'Attachment upload failed.');
+    } finally {
+      setUploadingAttachments(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const skillQuery = skillCommandQuery(input);
+  const visibleSkills = skillQuery !== null
+    ? skills
+        .filter((item) => !skillQuery || item.name.toLowerCase().includes(skillQuery.toLowerCase()))
+        .slice(0, 6)
+    : [];
+
   return (
-    <section className="flex-1 flex flex-col overflow-hidden bg-cream-50/70">
+    <section className="flex-1 flex flex-col overflow-hidden bg-cream-50">
       <WorkspaceBar
         path={currentProjectPath}
         onOpen={() => openFolder(currentProjectPath)}
@@ -413,7 +488,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
             ))
           )}
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-err/20 bg-err/10 px-3 py-2 text-xs text-err">
+            <div className="flex items-start gap-2 rounded-lg bg-err/10 px-3 py-2 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span className="flex-1">{error}</span>
               <button
@@ -428,34 +503,90 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-cream-300 bg-cream-50/95 px-5 py-3.5 shadow-[0_-10px_32px_rgba(80,50,28,0.06)]">
+      <div className="shrink-0 border-t border-cream-200 bg-cream-50 px-5 py-3.5">
         <div className="mx-auto max-w-4xl">
           <AgentPresets onInject={(text) => setInput((prev) => (prev ? prev + '\n' : '') + text)} />
-          <div className="relative flex items-end gap-2 rounded-xl border border-cream-300 bg-white/95 p-2 shadow-card">
-            <textarea
-              className="flex-1 resize-none bg-transparent text-sm text-ink-900 placeholder:text-ink-300
-                         focus:outline-none px-2.5 py-2 max-h-32 min-h-[44px]"
-              rows={1}
-              placeholder={currentSessionStreaming ? t('chat.streaming_placeholder') : t('chat.placeholder')}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-              }}
-              onKeyDown={onKeyDown}
-            />
-            <button
-              className={currentSessionStreaming ? 'btn-outline px-3 py-2 shrink-0 text-err hover:bg-err/10' : 'btn-primary px-3 py-2 shrink-0'}
-              onClick={currentSessionStreaming ? stopCurrent : send}
-              disabled={currentSessionStreaming ? false : !input.trim()}
-              title={currentSessionStreaming ? 'Stop current response' : 'Send message'}
-            >
-              {currentSessionStreaming ? <Square size={13} /> : <Send size={14} />}
-            </button>
+          {visibleSkills.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {visibleSkills.map((item) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => setInput((prev) => `${prev.trim().startsWith('$') ? '$' : '/'}${item.name} `)}
+                  className="rounded-full bg-cream-100 px-2.5 py-1 text-[11px] text-ink-600 hover:bg-clay-50 hover:text-clay-600"
+                  title={item.description}
+                >
+                  {item.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="relative rounded-lg bg-cream-100 p-2 shadow-card">
+            {attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5 border-b border-cream-200 pb-2">
+                {attachments.map((file) => (
+                  <span
+                    key={`${file.path}:${file.name}`}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-cream-50 px-2.5 py-1 text-[11px] text-ink-600"
+                    title={file.read_path}
+                  >
+                    <Paperclip size={11} className="shrink-0 text-clay-500" />
+                    <span className="max-w-48 truncate">{file.name}</span>
+                    <span className="shrink-0 text-ink-500">{formatBytes(file.size)}</span>
+                    <button
+                      type="button"
+                      className="shrink-0 text-ink-400 hover:text-err"
+                      onClick={() => setAttachments((prev) => prev.filter((item) => item.path !== file.path))}
+                      title="Remove attachment"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(event) => uploadSelectedFiles(event.target.files)}
+              />
+              <button
+                type="button"
+                className="btn-outline shrink-0 px-2.5 py-2"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingAttachments}
+                title="Upload attachments"
+              >
+                {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+              </button>
+              <textarea
+                className="flex-1 resize-none bg-transparent text-sm text-ink-900 placeholder:text-ink-500
+                           focus:outline-none px-2.5 py-2 max-h-32 min-h-[44px]"
+                rows={1}
+                placeholder={currentSessionStreaming ? t('chat.streaming_placeholder') : t('chat.placeholder')}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
+                }}
+                onKeyDown={onKeyDown}
+              />
+              <button
+                className={currentSessionStreaming ? 'btn-outline px-3 py-2 shrink-0 text-err hover:bg-err/10' : 'btn-primary px-3 py-2 shrink-0'}
+                onClick={currentSessionStreaming ? stopCurrent : send}
+                disabled={currentSessionStreaming ? false : (!input.trim() && !attachments.length) || uploadingAttachments}
+                title={currentSessionStreaming ? 'Stop current response' : 'Send message'}
+              >
+                {currentSessionStreaming ? <Square size={13} /> : <Send size={14} />}
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-between mt-1.5 px-2 gap-2">
-            <span className="text-[10px] text-ink-400 shrink-0">
+            <span className="text-[10px] text-ink-500 shrink-0">
               {currentSessionStreaming ? (
                 <span className="text-clay-500">Streaming - you can keep typing</span>
               ) : (
@@ -469,7 +600,7 @@ export function ChatView({ agents: _agents }: { agents: AgentInfo[] }) {
               onEffort={setEffort}
               streaming={!!currentSessionStreaming}
             />
-            <span className="text-[10px] text-ink-400 shrink-0">
+            <span className="text-[10px] text-ink-500 shrink-0">
               {currentSessionId ? `session ${currentSessionId.slice(0, 8)}` : 'New chat starts on first send'}
             </span>
           </div>
@@ -499,6 +630,7 @@ function EmptyState({ agent, t }: { agent: string; t: (k: any) => string }) {
     chat: 'General chat - run Python/R code when needed',
     brainstorm: 'Study design - literature-grounded hypothesis planning',
     bio: 'bulk RNA-seq / single-cell / spatial multiomics analysis',
+    structure: 'protein structure / design / docking / 3D inspection',
     protocol: 'Protocol building / data processing / Q&A',
     reviewer: 'Multi-domain scientific review',
     module: 'Workflow extraction / module packaging / harness specs',
@@ -506,8 +638,8 @@ function EmptyState({ agent, t }: { agent: string; t: (k: any) => string }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <BrandAvatar size={60} rounded="rounded-2xl" className="mb-4 shadow-card" />
-      <p className="mb-1 font-serif text-lg font-semibold text-ink-900">{guides[agent] || t('chat.empty.title')}</p>
-      <p className="max-w-sm text-xs leading-relaxed text-ink-400">{t('chat.empty.desc')}</p>
+      <p className="mb-1 font-serif text-xl tracking-[-0.015em] text-ink-900">{guides[agent] || t('chat.empty.title')}</p>
+      <p className="max-w-sm text-xs leading-relaxed text-ink-500">{t('chat.empty.desc')}</p>
     </div>
   );
 }
@@ -516,7 +648,7 @@ const MessageBubble = memo(function MessageBubble({ message, streaming, agent }:
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-xl rounded-tr-sm border border-clay-100 bg-clay-50 px-4 py-2.5 text-sm leading-relaxed text-ink-900 shadow-subtle whitespace-pre-wrap">
+        <div className="max-w-[80%] rounded-xl rounded-tr-sm bg-clay-50 px-4 py-2.5 text-[15.5px] font-serif leading-[1.7] text-ink-900 whitespace-pre-wrap" style={{ fontOpticalSizing: 'auto' }}>
           {message.content}
         </div>
       </div>
@@ -564,13 +696,13 @@ const MessageTimeline = memo(function MessageTimeline({
     // a long generation). Once the stream ends we switch back to full Markdown.
     if (streaming) {
       return (
-        <div className="prose prose-sm max-w-none text-sm stream-active">
+        <div className="prose prose-sm max-w-none text-[15.5px] stream-active">
           <PlainText content={content} />
         </div>
       );
     }
     return (
-      <div className="prose prose-sm max-w-none text-sm">
+      <div className="prose prose-sm max-w-none text-[15.5px]">
         <MarkdownRender content={content} />
       </div>
     );
@@ -580,18 +712,23 @@ const MessageTimeline = memo(function MessageTimeline({
     .sort((a, b) => (a.event.contentOffset ?? 0) - (b.event.contentOffset ?? 0) || a.index - b.index);
   const blocks: JSX.Element[] = [];
   let cursor = 0;
+  let previousCode = '';
 
   ordered.forEach(({ event }, idx) => {
     const offset = Math.max(cursor, Math.min(event.contentOffset ?? 0, content.length));
     const chunk = content.slice(cursor, offset);
     if (chunk) {
       blocks.push(
-        <div key={`text-${event.id}-${idx}`} className="prose prose-sm max-w-none text-sm">
+        <div key={`text-${event.id}-${idx}`} className="prose prose-sm max-w-none text-[15.5px]">
           <MarkdownRender content={chunk} />
         </div>
       );
     }
-    blocks.push(<ToolCallCard key={event.id} event={event} />);
+    const codeBefore = (event.name === 'run_python' || event.name === 'run_r') ? previousCode : '';
+    blocks.push(<ToolCallCard key={event.id} event={event} previousCode={codeBefore} />);
+    if ((event.name === 'run_python' || event.name === 'run_r') && event.args?.code) {
+      previousCode = String(event.args.code);
+    }
     cursor = offset;
   });
 
@@ -602,13 +739,13 @@ const MessageTimeline = memo(function MessageTimeline({
     // Markdown re-parsing, then fall back to Markdown once done.
     if (streaming) {
       blocks.push(
-        <div key="text-tail" className="prose prose-sm max-w-none text-sm stream-active">
+        <div key="text-tail" className="prose prose-sm max-w-none text-[15.5px] stream-active">
           <PlainText content={tail} />
         </div>
       );
     } else {
       blocks.push(
-        <div key="text-tail" className="prose prose-sm max-w-none text-sm">
+        <div key="text-tail" className="prose prose-sm max-w-none text-[15.5px]">
           <MarkdownRender content={tail} />
         </div>
       );
@@ -712,7 +849,7 @@ function AssistantOutputReview({ content, agent }: { content: string; agent: str
   return (
     <div className="mt-2">
       <button
-        className="inline-flex items-center gap-1.5 rounded-[10px] border border-cream-300 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-ink-500 hover:bg-cream-100"
+        className="inline-flex items-center gap-1.5 rounded-[10px] bg-cream-100 px-2.5 py-1 text-[11px] font-medium text-ink-600 hover:bg-cream-150"
         onClick={open && review ? () => setOpen((v) => !v) : runReview}
         title="Review this output"
       >
@@ -720,18 +857,18 @@ function AssistantOutputReview({ content, agent }: { content: string; agent: str
         <span>{reviewing ? 'Reviewing' : open && review ? 'Hide review' : 'Review output'}</span>
       </button>
       {open && (reviewing || review || error) && (
-        <div className="mt-2 rounded-lg border border-cream-300 bg-white/70 p-3">
+        <div className="mt-2 rounded-lg bg-cream-100 p-3">
           {error ? (
             <div className="flex items-start gap-2 text-xs text-err">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span className="whitespace-pre-wrap">{error}</span>
             </div>
           ) : review ? (
-            <div className={`prose prose-sm max-w-none text-sm ${reviewing ? 'stream-active' : ''}`}>
+            <div className={`prose prose-sm max-w-none text-[15.5px] ${reviewing ? 'stream-active' : ''}`}>
               <MarkdownRender content={review} />
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-xs text-ink-400">
+            <div className="flex items-center gap-2 text-xs text-ink-500">
               <Loader2 size={13} className="animate-spin text-clay-500" />
               <span>Reviewing...</span>
             </div>
@@ -754,8 +891,8 @@ function TypingDots() {
 
 // Rough context-window meter. Tokens are estimated from character count
 // (~4 chars/token for mixed EN/code). The window is fetched from the backend
-// so it matches the *actual* configured model (e.g. GLM-5.2 = 128K,
-// GLM-5.2[1m] = 1M), not a hard-coded guess.
+// so it matches the *actual* configured model (e.g. GLM-5.2 = 1M),
+// not a hard-coded guess.
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 128_000;
 const CHARS_PER_TOKEN = 4;
 
@@ -772,15 +909,26 @@ function ContextAndEffortBar({
   onEffort: (e: 'none' | 'high' | 'max') => void;
   streaming: boolean;
 }) {
-  // Fetch the real context window for the configured model (GLM-5.2 = 128K,
-  // GLM-5.2[1m] = 1M, etc.) once on mount so the meter is accurate.
   const [windowTokens, setWindowTokens] = useState(FALLBACK_CONTEXT_WINDOW_TOKENS);
   const [modelName, setModelName] = useState('');
   useEffect(() => {
-    api.getModels().then((m) => {
-      setWindowTokens(m.current_context_window || FALLBACK_CONTEXT_WINDOW_TOKENS);
-      setModelName(m.current || '');
-    }).catch(() => {});
+    const refreshModelInfo = () => {
+      api.getModels().then((m) => {
+        setWindowTokens(m.current_context_window || FALLBACK_CONTEXT_WINDOW_TOKENS);
+        setModelName(m.current || '');
+      }).catch(() => {});
+    };
+    const onSettingsSaved = () => refreshModelInfo();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshModelInfo();
+    };
+    refreshModelInfo();
+    window.addEventListener('science-workbench-settings-saved', onSettingsSaved);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('science-workbench-settings-saved', onSettingsSaved);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   const usedChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0) + input.length;
@@ -818,10 +966,10 @@ function ContextAndEffortBar({
       {ctxOpen && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setCtxOpen(false)} />
-          <div className="absolute bottom-6 left-1/2 z-40 w-64 -translate-x-1/2 rounded-lg border border-cream-300 bg-white p-3 text-[11px] text-ink-600 shadow-lift">
+          <div className="absolute bottom-6 left-1/2 z-40 w-64 -translate-x-1/2 rounded-lg bg-cream-50 p-3 text-[11px] text-ink-600 shadow-lift">
             <div className="flex items-center justify-between mb-1.5">
               <span className="font-semibold text-ink-800">Context window</span>
-              <span className="text-ink-400">{(usedTokens / 1000).toFixed(1)}K / {(windowTokens / 1000).toFixed(0)}K</span>
+              <span className="text-ink-500">{(usedTokens / 1000).toFixed(1)}K / {(windowTokens / 1000).toFixed(0)}K</span>
             </div>
             <div className="mb-2 h-2 overflow-hidden rounded-full bg-cream-200">
               <div className={`h-full ${barColor}`} style={{ width: `${Math.max(2, pct)}%` }} />
@@ -833,17 +981,17 @@ function ContextAndEffortBar({
               <CtxRow label="Used total" value={usedTokens} total={windowTokens} strong />
               <CtxRow label="Remaining" value={remainingTokens} total={windowTokens} />
             </div>
-            <p className="text-[10px] text-ink-300 mt-1">
+            <p className="text-[10px] text-ink-500 mt-1">
               {modelName ? `Model: ${modelName} · ` : ''}{(windowTokens / 1000).toFixed(0)}K window
             </p>
-            <p className="text-[10px] text-ink-300 mt-1 leading-relaxed">Estimate from character count (~4 chars/token). Long histories are auto-compacted near the limit.</p>
+            <p className="text-[10px] text-ink-500 mt-1 leading-relaxed">Estimate from character count (~4 chars/token). Long histories are auto-compacted near the limit.</p>
           </div>
         </>
       )}
       {/* Per-message thinking tier selector */}
       <div className="flex items-center gap-1 shrink-0" title="Thinking intensity for this message">
-        <Brain size={11} className="text-ink-400" />
-        <div className="flex overflow-hidden rounded-[8px] border border-cream-300 bg-white/50">
+        <Brain size={11} className="text-ink-500" />
+        <div className="flex overflow-hidden rounded-[8px] bg-cream-100">
           {(['none', 'high', 'max'] as const).map((tier) => (
             <button
               key={tier}
@@ -851,14 +999,14 @@ function ContextAndEffortBar({
               disabled={streaming}
               onClick={() => onEffort(tier)}
               className={`px-1.5 py-0.5 text-[10px] transition-colors disabled:opacity-50 ${
-                effort === tier ? 'bg-clay-50 text-clay-600 font-medium' : 'text-ink-400 hover:bg-cream-100'
+                effort === tier ? 'bg-clay-50 text-clay-600 font-medium' : 'text-ink-500 hover:bg-cream-150'
               }`}
             >
               {tier === 'none' ? 'Off' : tier === 'high' ? 'High' : 'Max'}
             </button>
           ))}
         </div>
-        <span className="text-[10px] text-ink-300 sr-only">{effortLabel}</span>
+        <span className="text-[10px] text-ink-400 sr-only">{effortLabel}</span>
       </div>
     </div>
   );
@@ -868,9 +1016,9 @@ function CtxRow({ label, value, total, strong }: { label: string; value: number;
   const pct = Math.round((value / total) * 100);
   return (
     <div className="flex items-center justify-between">
-      <span className={strong ? 'text-ink-800 font-medium' : 'text-ink-500'}>{label}</span>
-      <span className="tabular-nums text-ink-400">
-        {value.toLocaleString()} <span className="text-ink-300">({pct}%)</span>
+      <span className={strong ? 'text-ink-800 font-medium' : 'text-ink-600'}>{label}</span>
+      <span className="tabular-nums text-ink-500">
+        {value.toLocaleString()} <span className="text-ink-400">({pct}%)</span>
       </span>
     </div>
   );
@@ -906,22 +1054,22 @@ function PlanConfirmModal({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-clay-600/15 backdrop-blur-sm" onClick={close}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/25 backdrop-blur-sm" onClick={close}>
       <div
-        className="w-full max-w-lg overflow-y-auto rounded-xl border border-cream-300 bg-white shadow-lift max-h-[85vh]"
+        className="w-full max-w-lg overflow-y-auto rounded-xl bg-cream-50 shadow-lift max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 border-b border-cream-300 px-5 py-3.5">
+        <div className="flex items-center gap-2 border-b border-cream-200 px-5 py-3.5">
           <ListChecks size={16} className="text-clay-500" />
-          <h3 className="font-serif text-base font-semibold text-ink-900">Confirm the plan</h3>
+          <h3 className="font-serif text-base font-semibold tracking-[-0.01em] text-ink-900">Confirm the plan</h3>
         </div>
-        <div className="border-b border-cream-200 bg-cream-50 px-5 py-3 text-xs text-ink-500">
+        <div className="border-b border-cream-200 bg-cream-100 px-5 py-3 text-xs text-ink-600">
           The agent has decomposed this task into the steps below. Edit, remove, or add steps, then confirm to let it proceed. Cancel to redirect the agent.
         </div>
         <div className="px-5 py-4 space-y-2">
           {edited.map((item, i) => (
             <div key={i} className="flex items-start gap-2">
-              <span className="text-xs text-ink-300 mt-2 tabular-nums w-5 shrink-0">{i + 1}.</span>
+              <span className="text-xs text-ink-400 mt-2 tabular-nums w-5 shrink-0">{i + 1}.</span>
               <textarea
                 className="input flex-1 min-h-[36px] py-1.5"
                 value={item}
@@ -929,7 +1077,7 @@ function PlanConfirmModal({
                 rows={1}
               />
               <button
-                className="text-ink-300 hover:text-err p-1 mt-1 shrink-0"
+                className="text-ink-400 hover:text-err p-1 mt-1 shrink-0"
                 onClick={() => remove(i)}
                 title="Remove step"
               >
@@ -948,7 +1096,7 @@ function PlanConfirmModal({
             rows={2}
           />
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-cream-300 bg-cream-50 px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-cream-200 bg-cream-100 px-5 py-3">
           <button className="btn-ghost text-sm" onClick={close}>Cancel</button>
           <button className="btn-primary text-sm" onClick={confirm}>
             Confirm & proceed
@@ -963,9 +1111,9 @@ function WorkspaceBar({ path, onOpen }: { path: string; onOpen: () => void }) {
   const t = useI18n((s) => s.t);
   if (path) {
     return (
-      <div className="shrink-0 flex items-center gap-2 border-b border-cream-300 bg-cream-100/70 px-4 py-1.5 text-xs">
+      <div className="shrink-0 flex items-center gap-2 border-b border-cream-200 bg-cream-100/70 px-4 py-1.5 text-xs">
         <FolderOpen size={12} className="shrink-0 text-clay-500" />
-        <span className="text-ink-400">{t('chat.workspace')}</span>
+        <span className="text-ink-500">{t('chat.workspace')}</span>
         <span className="truncate flex-1 font-mono text-ink-700" title={path}>{path}</span>
         <button
           className="text-ink-400 hover:text-clay-600 shrink-0"
@@ -978,7 +1126,7 @@ function WorkspaceBar({ path, onOpen }: { path: string; onOpen: () => void }) {
     );
   }
   return (
-    <div className="shrink-0 flex items-center gap-2 border-b border-cream-300 bg-cream-100/70 px-4 py-1.5 text-xs text-ink-400">
+    <div className="shrink-0 flex items-center gap-2 border-b border-cream-200 bg-cream-100/70 px-4 py-1.5 text-xs text-ink-500">
       <FolderPlus size={12} className="shrink-0" />
       <span>{t('chat.no_workspace')}</span>
     </div>

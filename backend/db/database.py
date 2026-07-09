@@ -23,7 +23,15 @@ def init_db():
 
     inspector = inspect(engine)
     migrations = {
-        "projects": [("local_path", "TEXT DEFAULT ''"), ("archived", "BOOLEAN DEFAULT 0")],
+        "projects": [
+            ("local_path", "TEXT DEFAULT ''"),
+            ("archived", "BOOLEAN DEFAULT 0"),
+            ("server_host", "TEXT DEFAULT ''"),
+            ("server_port", "INTEGER DEFAULT 22"),
+            ("server_username", "TEXT DEFAULT ''"),
+            ("server_password", "TEXT DEFAULT ''"),
+            ("server_workdir", "TEXT DEFAULT ''"),
+        ],
         "hpc_connections": [],
         "artifacts": [("project_path", "TEXT DEFAULT ''")],
     }

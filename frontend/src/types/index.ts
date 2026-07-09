@@ -1,6 +1,6 @@
 export type AgentKey =
   | 'chat' | 'brainstorm'
-  | 'bio' | 'protocol' | 'reviewer' | 'module' | 'document' | 'hpc';
+  | 'bio' | 'structure' | 'protocol' | 'reviewer' | 'module' | 'document' | 'hpc';
 
 export interface AgentInfo {
   key: AgentKey;
@@ -16,6 +16,23 @@ export interface Project {
   local_path: string;
   archived: boolean;
   session_count: number;
+  // Optional remote execution server (bio-analysis / structure-bio). Empty
+  // server_host = run locally. has_server_password mirrors the backend's
+  // masked echo so the edit form knows whether a password is already stored.
+  server_host: string;
+  server_port: number;
+  server_username: string;
+  has_server_password: boolean;
+  server_workdir: string;
+}
+
+/** Shape used by the create/edit form and sent to the create/update API. */
+export interface ProjectServerFields {
+  server_host: string;
+  server_port: number;
+  server_username: string;
+  server_password: string;
+  server_workdir: string;
 }
 
 export interface SessionInfo {
@@ -47,6 +64,20 @@ export interface Artifact {
   project_path?: string;
   env_snapshot?: string;
   created_at?: string;
+}
+
+export interface ChatAttachment {
+  name: string;
+  path: string;
+  read_path: string;
+  size: number;
+  content_type?: string;
+}
+
+export interface SkillInfo {
+  name: string;
+  group: string;
+  description: string;
 }
 
 export type Lang = 'zh' | 'en';

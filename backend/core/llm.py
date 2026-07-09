@@ -135,9 +135,8 @@ def _error_event(message: str, session_id: str) -> str:
 def _with_reasoning_instruction(system_prompt: str, effort_override: str = "") -> str:
     base = _as_text(system_prompt)
     effort = _as_text(effort_override or getattr(settings, "reasoning_effort", "") or "max").lower()
-    # Zhipu GLM exposes three thinking tiers: none / high / max. We mirror them
-    # here as system-prompt guidance. "auto" and the legacy "low"/"medium"
-    # values are normalised to a sensible tier so old saved settings still work.
+    # The workbench exposes three simple thinking tiers: none / high / max.
+    # Exact provider API values are mapped later in _extra_model_kwargs.
     instructions = {
         "none": "Reasoning effort: none. Do not use extended thinking. Answer directly and quickly.",
         "high": (
@@ -333,7 +332,7 @@ def _extra_model_kwargs(model: str, effort_override: str = "", protocol: str = "
     reject. The per-message ``effort_override`` wins over the global default.
 
     ``protocol`` selects the right field name for the wire:
-    - ``"openai"`` -> ``reasoning_effort`` (GLM-5.2 on the v4 endpoint).
+    - ``"openai"`` -> ``reasoning_effort`` (GLM/OpenAI-compatible endpoints).
     - ``"anthropic"`` -> ``thinking={"type": "enabled"|"disabled"}`` (the form
       both Claude and Zhipu's Anthropic-compatible endpoint accept).
     """
@@ -345,12 +344,14 @@ def _extra_model_kwargs(model: str, effort_override: str = "", protocol: str = "
         return kwargs
 
     effort = (effort_override or spec.default_reasoning_effort or "max").lower()
-    # Normalise legacy values into the GLM tiers so old .env keeps working.
+    # Normalise legacy values into the workbench tiers so old .env keeps working.
     if effort in {"auto", "max"}:
         effort = "max"
     elif effort in {"low", "medium", "none"}:
         effort = "none" if effort in {"low", "none"} else "high"
     # else: keep "high"
+    if spec.reasoning_effort_map:
+        effort = spec.reasoning_effort_map.get(effort, effort)
 
     if protocol == "anthropic":
         # Anthropic/GLM anthropic endpoint: extended thinking on/off. "none"

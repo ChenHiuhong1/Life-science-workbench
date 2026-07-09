@@ -11,6 +11,7 @@ const AGENT_NAV: { key: AgentKey; tKey: any }[] = [
   { key: 'chat', tKey: 'nav.chat' },
   { key: 'brainstorm', tKey: 'nav.brainstorm' },
   { key: 'bio', tKey: 'nav.bio' },
+  { key: 'structure', tKey: 'nav.structure' },
   { key: 'protocol', tKey: 'nav.protocol' },
   { key: 'reviewer', tKey: 'nav.reviewer' },
   { key: 'module', tKey: 'nav.module' },
@@ -19,6 +20,7 @@ const AGENT_NAV: { key: AgentKey; tKey: any }[] = [
 
 export function Sidebar({ agents }: { agents: AgentInfo[] }) {
   const t = useI18n((s) => s.t);
+  const lang = useI18n((s) => s.lang);
   const agent = useStore((s) => s.agent);
   const setAgent = useStore((s) => s.setAgent);
   const projects = useStore((s) => s.projects);
@@ -29,7 +31,7 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
   const createSession = useStore((s) => s.createSession);
   const selectSession = useStore((s) => s.selectSession);
   const archiveProject = useStore((s) => s.archiveProject);
-  const loadProjects = useStore((s) => s.loadProjects);
+  const deleteProject = useStore((s) => s.deleteProject);
   const streamingSessions = useStore((s) => s.streamingSessions);
   const creatingSession = useStore((s) => s.creatingSession);
   const renameSession = useStore((s) => s.renameSession);
@@ -76,8 +78,11 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
     }
   };
 
+  const sessionAgentInfo = (mode: string) =>
+    agents.find((item) => item.key === mode) || agents.find((item) => item.key === 'chat');
+
   return (
-    <aside className="w-64 shrink-0 border-r border-cream-300 bg-cream-100/50 flex flex-col overflow-hidden shadow-[inset_-1px_0_0_rgba(255,255,255,0.62)]">
+    <aside className="w-64 shrink-0 border-r border-cream-200 bg-cream-100/60 flex flex-col overflow-hidden">
       <div className="px-3 py-3.5 space-y-1">
         {AGENT_NAV.map(({ key, tKey }) => {
           const Icon = AGENT_ICONS[agents.find((item) => item.key === key)?.icon || 'message'] || MessageSquare;
@@ -95,15 +100,15 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
         })}
       </div>
 
-      <div className="h-px bg-cream-300 mx-3" />
+      <div className="h-px bg-cream-200 mx-3" />
 
       <div className="flex-1 overflow-y-auto px-3 py-3.5">
         <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-400">
+          <span className="text-xs font-semibold text-ink-600">
             {t('nav.section.projects')}
           </span>
           <button
-            className="text-ink-400 hover:text-clay-600 p-1 rounded-[8px] hover:bg-white"
+            className="text-ink-500 hover:text-clay-500 p-1 rounded-[8px] hover:bg-cream-50"
             onClick={() => setNewProjOpen(true)}
             title={t('nav.new_project')}
           >
@@ -113,8 +118,8 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
 
         {projects.length === 0 && (
           <div className="px-2 py-6 text-center">
-            <p className="text-xs text-ink-300">{t('nav.no_project')}</p>
-            <p className="text-xs text-ink-300 mt-1">{t('nav.no_project_desc')}</p>
+            <p className="text-xs text-ink-500">{t('nav.no_project')}</p>
+            <p className="text-xs text-ink-500 mt-1">{t('nav.no_project_desc')}</p>
           </div>
         )}
 
@@ -126,11 +131,11 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
               <div key={project.id}>
                 <div
                   className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[10px] cursor-pointer text-sm transition-colors
-                    ${isActive ? 'bg-white text-ink-900 shadow-subtle ring-1 ring-cream-300' : 'text-ink-500 hover:bg-white/70 hover:text-ink-900'}`}
+                    ${isActive ? 'bg-cream-50 text-ink-900' : 'text-ink-600 hover:bg-cream-50/70 hover:text-ink-900'}`}
                   onClick={() => selectProject(project.id)}
                 >
                   <button
-                    className="text-ink-300 hover:text-ink-700"
+                    className="text-ink-400 hover:text-ink-700"
                     onClick={(e) => {
                       e.stopPropagation();
                       setProjCollapsed((cur) => ({ ...cur, [project.id]: !cur[project.id] }));
@@ -143,14 +148,14 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                   <span className="truncate flex-1" title={project.name}>{project.name}</span>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      className="text-ink-300 hover:text-clay-600 p-1 rounded-[8px] hover:bg-cream-100"
+                      className="text-ink-400 hover:text-clay-600 p-1 rounded-[8px] hover:bg-cream-100"
                       title={t('nav.edit_project')}
                       onClick={(e) => { e.stopPropagation(); setEditingProject(project); }}
                     >
                       <Settings2 size={11} />
                     </button>
                     <button
-                      className="text-ink-300 hover:text-warn p-1 rounded-[8px] hover:bg-cream-100"
+                      className="text-ink-400 hover:text-amber-500 p-1 rounded-[8px] hover:bg-cream-100"
                       title="Archive"
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -162,13 +167,12 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                       <Archive size={11} />
                     </button>
                     <button
-                      className="text-ink-300 hover:text-err p-1 rounded-[8px] hover:bg-cream-100"
+                      className="text-ink-400 hover:text-err p-1 rounded-[8px] hover:bg-cream-100"
                       title="Delete"
                       onClick={async (e) => {
                         e.stopPropagation();
                         if (confirm(`Delete project "${project.name}"?\n\nThis removes sessions, messages, and artifact records. Local folders are not deleted. This cannot be undone.`)) {
-                          await api.deleteProject(project.id);
-                          await loadProjects();
+                          await deleteProject(project.id);
                         }
                       }}
                     >
@@ -178,15 +182,15 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                 </div>
 
                 {isActive && !collapsed && (
-                  <div className="ml-5 mt-1 space-y-1 border-l border-cream-300 pl-2">
+                  <div className="ml-5 mt-1 space-y-1 border-l border-cream-200 pl-2">
                     {project.local_path && (
-                      <div className="group flex items-center gap-1.5 px-2 py-1 text-xs text-ink-400">
+                      <div className="group flex items-center gap-1.5 px-2 py-1 text-xs text-ink-500">
                         <FolderOpen size={11} className="shrink-0" />
                         <span className="truncate flex-1 font-mono" title={project.local_path}>
                           {project.local_path}
                         </span>
                         <button
-                          className="opacity-0 group-hover:opacity-100 text-ink-300 hover:text-clay-600"
+                          className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-clay-600"
                           title={t('nav.open_folder')}
                           onClick={(e) => { e.stopPropagation(); openInExplorer(project.local_path); }}
                         >
@@ -204,72 +208,80 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
                       ) : (
                         <Plus size={12} />
                       )}
-                      <span className="text-ink-300">{creatingSession ? 'Creating...' : t('nav.new_session')}</span>
+                      <span className="text-ink-500">{creatingSession ? 'Creating...' : t('nav.new_session')}</span>
                     </button>
-                    {sessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[10px] cursor-pointer text-xs transition-colors
-                          ${currentSessionId === session.id ? 'bg-clay-50 text-clay-600 ring-1 ring-clay-100' : 'text-ink-500 hover:bg-white/70 hover:text-ink-900'}`}
-                        onClick={() => selectSession(session.id)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          startRename(session.id, session.title);
-                        }}
-                      >
-                        <MessageSquare size={11} strokeWidth={1.75} className="shrink-0" />
-                        {renamingSessionId === session.id ? (
-                          <input
-                            ref={renameInputRef}
-                            className="flex-1 min-w-0 bg-white border border-clay-400 rounded px-1 py-0.5 text-xs text-ink-900 focus:outline-none"
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-                              else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
-                            }}
-                            onBlur={commitRename}
-                            placeholder={t('common.rename')}
-                          />
-                        ) : (
-                          <span
-                            className="truncate flex-1"
-                            title={`${session.title}\n${t('common.rename_hint')}`}
-                          >
-                            {session.title}
-                          </span>
-                        )}
-                        {streamingSessions[session.id] && (
-                          <Loader2 size={10} className="shrink-0 animate-spin text-clay-500" />
-                        )}
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {renamingSessionId !== session.id && (
+                    {sessions.map((session) => {
+                      const sessionAgent = sessionAgentInfo(session.mode);
+                      const SessionIcon = AGENT_ICONS[sessionAgent?.icon || 'message'] || MessageSquare;
+                      const agentLabel = sessionAgent
+                        ? (lang === 'zh' ? sessionAgent.label_zh : sessionAgent.label_en)
+                        : 'Chat';
+                      const agentTitleLabel = lang === 'zh' ? '模块' : 'Agent';
+                      return (
+                        <div
+                          key={session.id}
+                          className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[10px] cursor-pointer text-xs transition-colors
+                            ${currentSessionId === session.id ? 'bg-clay-50 text-clay-700' : 'text-ink-600 hover:bg-cream-50/70 hover:text-ink-900'}`}
+                          onClick={() => selectSession(session.id)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            startRename(session.id, session.title);
+                          }}
+                        >
+                          <SessionIcon size={11} strokeWidth={1.75} className="shrink-0" />
+                          {renamingSessionId === session.id ? (
+                            <input
+                              ref={renameInputRef}
+                              className="flex-1 min-w-0 bg-cream-50 border border-clay-400 rounded px-1 py-0.5 text-xs text-ink-900 focus:outline-none"
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                                else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                              }}
+                              onBlur={commitRename}
+                              placeholder={t('common.rename')}
+                            />
+                          ) : (
+                            <span
+                              className="truncate flex-1"
+                              title={`${session.title}\n${agentTitleLabel}: ${agentLabel}\n${t('common.rename_hint')}`}
+                            >
+                              {session.title}
+                            </span>
+                          )}
+                          {streamingSessions[session.id] && (
+                            <Loader2 size={10} className="shrink-0 animate-spin text-clay-500" />
+                          )}
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {renamingSessionId !== session.id && (
+                              <button
+                                className="text-ink-400 hover:text-clay-600 p-0.5 rounded hover:bg-cream-150"
+                                title={t('common.rename')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startRename(session.id, session.title);
+                                }}
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            )}
                             <button
-                              className="text-ink-300 hover:text-clay-600 p-0.5 rounded hover:bg-cream-200"
-                              title={t('common.rename')}
-                              onClick={(e) => {
+                              className="text-ink-400 hover:text-err p-0.5 rounded hover:bg-cream-150"
+                              title={t('common.delete')}
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                startRename(session.id, session.title);
+                                await api.deleteSession(session.id);
+                                selectProject(currentProjectId!);
                               }}
                             >
-                              <Pencil size={11} />
+                              <Trash2 size={11} />
                             </button>
-                          )}
-                          <button
-                            className="text-ink-300 hover:text-err p-0.5 rounded hover:bg-cream-200"
-                            title={t('common.delete')}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              await api.deleteSession(session.id);
-                              selectProject(currentProjectId!);
-                            }}
-                          >
-                            <Trash2 size={11} />
-                          </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -278,7 +290,7 @@ export function Sidebar({ agents }: { agents: AgentInfo[] }) {
         </div>
       </div>
 
-      <div className="border-t border-cream-300 px-3 py-2.5 bg-cream-50/50">
+      <div className="border-t border-cream-200 px-3 py-2.5">
         <button
           className={`nav-item w-full ${agent === ('hpc' as any) ? 'nav-item-active' : ''}`}
           onClick={() => setAgent('hpc' as AgentKey)}

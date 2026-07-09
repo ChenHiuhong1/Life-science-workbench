@@ -49,14 +49,15 @@ Science Workbench 是一款**本地优先（local-first）**的桌面端科研 A
 |------|------|
 | **Chat 聊天** | 项目级会话、流式响应、可中途停止生成、代码执行与产物追踪、会话可重命名 |
 | **Study Design 研究设计** | 基于检索工具的文献语境、假设生成、研究方案规划 |
-| **Bio-Analysis 生信分析** | Python / R 工作流、图表产物、环境快照、文献支撑的方法选择 |
+| **Bio-Analysis 生信分析** | Python / R 组学工作流、图表产物、环境快照、文献支撑的方法选择 |
+| **Structure-Bio 结构生物学** | 蛋白结构预测、蛋白设计、对接、序列嵌入与 PDB/mmCIF/SDF/MOL2 结构 3D 预览 |
 | **Protocol 实验流程** | 湿实验流程构建、问答、数据处理与证据化参数核查 |
 | **Reviewer 评审** | 多领域评审清单、引用/证据核查与文本修订 |
 | **Document 文档** | Markdown 文档编辑器（左编辑右预览），一键调用多领域审查，输出按严重度排序的修改清单 |
 | **Module 模块** | 工作流抽取、用户引导式修订、正式模块封装 |
 | **HPC 高性能计算** | SSH 连接、远程命令、上传/下载、调度器队列 |
 
-文献检索不再作为独立 agent 展示；需要证据时，Chat、Study Design、Bio-Analysis、Protocol、Reviewer 和 Document 会在各自会话内调用 `search_literature`，检索结果归属当前会话。
+文献检索不再作为独立 agent 展示；需要证据时，Chat、Study Design、Bio-Analysis、Structure-Bio、Protocol、Reviewer 和 Document 会在各自会话内调用 `search_literature`，检索结果归属当前会话。
 
 ### 📂 工作区与数据
 
@@ -149,7 +150,8 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 |--------|-------------|
 | **Chat** | Project-scoped sessions, streaming responses, stop generation mid-stream, code execution, artifact tracking, renameable sessions |
 | **Study Design** | Evidence-grounded context, hypothesis generation, proposal planning |
-| **Bio-Analysis** | Python / R workflows, figure artifacts, environment snapshots, evidence-backed method choices |
+| **Bio-Analysis** | Python / R omics workflows, figure artifacts, environment snapshots, evidence-backed method choices |
+| **Structure-Bio** | Protein structure prediction, protein design, docking, sequence embeddings, and 3D previews for PDB/mmCIF/SDF/MOL2 structure files |
 | **Protocol** | Wet-lab protocol building, Q&A, data processing, parameter evidence checks |
 | **Reviewer** | Multi-domain review checklists, citation/evidence checks, and text revision |
 | **Document** | Markdown editor (edit left, preview right) with one-click multi-domain review returning a severity-sorted revision checklist |
@@ -157,7 +159,7 @@ End users never need to install Python, Node.js, or Rust, nor touch a command li
 | **HPC** | SSH connections, remote commands, upload/download, scheduler queues |
 
 Literature search is no longer a standalone agent. When evidence is needed,
-Chat, Study Design, Bio-Analysis, Protocol, Reviewer, and Document call
+Chat, Study Design, Bio-Analysis, Structure-Bio, Protocol, Reviewer, and Document call
 `search_literature` inside the active session so sources stay attached to the
 work that requested them.
 

@@ -2,6 +2,7 @@
 import asyncio
 import os
 import sys
+import urllib.request
 from typing import Awaitable, Callable, Dict, List, Optional
 
 import httpx
@@ -42,21 +43,27 @@ def _normalise_proxy_url(value: str) -> list[str]:
     return [value]
 
 
-def _proxy_kwargs() -> dict:
-    global _detected_proxy, _proxy_detection_done, _proxy_detection_negative
-
-    proxy = (
+def _raw_env_proxy() -> str:
+    return (
         os.environ.get("HTTPS_PROXY")
         or os.environ.get("https_proxy")
         or os.environ.get("HTTP_PROXY")
         or os.environ.get("http_proxy")
         or os.environ.get("ALL_PROXY")
         or os.environ.get("all_proxy")
+        or ""
     )
 
+
+def _proxy_kwargs() -> dict:
+    global _detected_proxy, _proxy_detection_done, _proxy_detection_negative
+
+    proxy = _raw_env_proxy()
     if proxy:
-        logger.debug(f"[literature] using proxy: {proxy}")
-        return {"proxy": proxy}
+        normalized = _normalise_proxy_url(proxy)
+        if normalized:
+            logger.debug(f"[literature] using env proxy: {normalized[0]}")
+            return {"proxy": normalized[0]}
 
     # Cached positive detection.
     if _detected_proxy:
@@ -86,12 +93,49 @@ def _scan_for_proxy_once() -> None:
     global _detected_proxy, _proxy_detection_done, _proxy_detection_negative
     if _proxy_detection_done:
         return
-    if sys.platform != "win32":
+
+    candidates: list[str] = _configured_proxy_candidates()
+
+    detected = _first_working_proxy(candidates)
+    if detected:
+        _detected_proxy = detected
         _proxy_detection_done = True
-        _proxy_detection_negative = True
         return
 
+    # TUN / VPN modes usually expose no HTTP proxy at all; the OS routes
+    # traffic transparently. Probe direct connectivity before guessing local
+    # proxy ports, otherwise a stray open local port can slow or break PubMed.
+    if _probe_eutils(proxy=None, timeout=6):
+        _proxy_detection_negative = True
+        _proxy_detection_done = True
+        logger.info("[literature] direct PubMed connectivity available; no proxy selected")
+        return
+
+    local_candidates: list[str] = []
+    if sys.platform == "win32":
+        for port in (7897, 7890, 10809, 10814, 2080):
+            local_candidates.append(f"http://127.0.0.1:{port}")
+
+    detected = _first_working_proxy(local_candidates)
+    if detected:
+        _detected_proxy = detected
+    else:
+        _proxy_detection_negative = True
+    _proxy_detection_done = True
+
+
+def _configured_proxy_candidates() -> list[str]:
     candidates: list[str] = []
+    try:
+        proxies = urllib.request.getproxies()
+        for key in ("https", "http", "all"):
+            candidates.extend(_normalise_proxy_url(proxies.get(key, "")))
+    except Exception:
+        pass
+
+    if sys.platform != "win32":
+        return _unique(candidates)
+
     try:
         import winreg
 
@@ -105,14 +149,13 @@ def _scan_for_proxy_once() -> None:
                 candidates.extend(_normalise_proxy_url(str(server)))
     except Exception:
         pass
+    return _unique(candidates)
 
-    for port in (7897, 7890, 10809, 10814, 2080):
-        candidates.append(f"http://127.0.0.1:{port}")
 
+def _first_working_proxy(candidates: list[str]) -> str | None:
     import socket
 
-    detected = None
-    for candidate in candidates:
+    for candidate in _unique(candidates):
         host_port = (
             candidate.replace("http://", "")
             .replace("https://", "")
@@ -124,23 +167,37 @@ def _scan_for_proxy_once() -> None:
             port = int(port_s)
             with socket.create_connection((host, port), timeout=1):
                 pass
-            try:
-                with httpx.Client(timeout=6, proxy=candidate, verify=_ssl_ctx()) as client:
-                    response = client.get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/einfo.fcgi?db=pubmed&retmode=json")
-                    if response.status_code == 200:
-                        detected = candidate
-                        logger.info(f"[literature] detected proxy {candidate}")
-                        break
-            except Exception:
-                continue
         except Exception:
             continue
+        if _probe_eutils(proxy=candidate, timeout=6):
+            logger.info(f"[literature] detected proxy {candidate}")
+            return candidate
+    return None
 
-    if detected:
-        _detected_proxy = detected
-    else:
-        _proxy_detection_negative = True
-    _proxy_detection_done = True
+
+def _probe_eutils(proxy: str | None, timeout: int | float = 6) -> bool:
+    try:
+        kwargs = {
+            "timeout": timeout,
+            "headers": HEADERS,
+            "verify": _ssl_ctx(),
+            "trust_env": False,
+        }
+        if proxy:
+            kwargs["proxy"] = proxy
+        with httpx.Client(**kwargs) as client:
+            response = client.get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/einfo.fcgi?db=pubmed&retmode=json")
+            return response.status_code == 200
+    except Exception:
+        return False
+
+
+def _unique(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        if value and value not in out:
+            out.append(value)
+    return out
 
 
 async def ensure_proxy_detected() -> None:
@@ -153,8 +210,12 @@ async def ensure_proxy_detected() -> None:
     """
     if _detected_proxy or _proxy_detection_negative or _proxy_detection_done:
         return
+    if _raw_env_proxy():
+        return
     async with _proxy_lock:
         if _detected_proxy or _proxy_detection_negative or _proxy_detection_done:
+            return
+        if _raw_env_proxy():
             return
         await asyncio.to_thread(_scan_for_proxy_once)
 
@@ -174,7 +235,7 @@ def _ssl_ctx():
 
 
 def _client_kwargs(timeout: int | float) -> dict:
-    return {"timeout": timeout, "headers": HEADERS, "verify": _ssl_ctx(), **_proxy_kwargs()}
+    return {"timeout": timeout, "headers": HEADERS, "verify": _ssl_ctx(), "trust_env": False, **_proxy_kwargs()}
 
 
 async def search_pubmed(query: str, limit: int = 10) -> Optional[List[dict]]:
